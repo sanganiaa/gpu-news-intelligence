@@ -1,0 +1,9 @@
+# Production: NVIDIA CUDA base for EC2 g4dn deployment
+FROM nvidia/cuda:12.3.0-runtime-ubuntu22.04
+RUN apt-get update && apt-get install -y python3.12 python3-pip
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 5003
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "5003"]

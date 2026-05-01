@@ -1,0 +1,66 @@
+version: "3.9"
+
+services:
+  api-gateway:
+    build: ./backend/api-gateway
+    ports:
+      - "4000:4000"
+    depends_on:
+      - news-ingestion-service
+      - preprocessing-service
+      - inference-engine
+      - signal-generation-service
+      - results-db-service
+    environment:
+      - NODE_ENV=development
+
+  news-ingestion-service:
+    build: ./backend/news-ingestion-service
+    ports:
+      - "5001:5001"
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  preprocessing-service:
+    build: ./backend/preprocessing-service
+    ports:
+      - "5002:5002"
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  inference-engine:
+    build: ./backend/inference-engine
+    ports:
+      - "5003:5003"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEVICE=mps   # swap to "cuda" on cloud GPU instance
+    # Uncomment on NVIDIA cloud instance:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  signal-generation-service:
+    build: ./backend/signal-generation-service
+    ports:
+      - "5004:5004"
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  results-db-service:
+    build: ./backend/results-db-service
+    ports:
+      - "5005:5005"
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-gateway
