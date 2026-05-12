@@ -11,6 +11,9 @@ const MOCK_ARTICLES = [
   { src: 'NewsAPI', srcClass: 'newsapi', ticker: 'SNOW', title: 'Snowflake beats Q4 estimates as enterprise AI workloads accelerate',          sent: 'pos' },
   { src: 'Yahoo',   srcClass: 'yahoo',   ticker: 'NBIS', title: 'Nebius Group expands GPU cloud capacity ahead of demand surge',              sent: 'pos' },
   { src: 'EDGAR',   srcClass: 'edgar',   ticker: 'AMZN', title: '8-K: AWS announces $150B infrastructure investment plan',                    sent: 'pos' },
+  { src: 'Yahoo',   srcClass: 'yahoo',   ticker: 'NVDA', title: 'Nvidia partners with sovereign AI funds across 12 countries',                sent: 'pos' },
+  { src: 'NewsAPI', srcClass: 'newsapi', ticker: 'NVDA', title: 'NVDA options activity surges ahead of GTC keynote',                          sent: 'pos' },
+  { src: 'EDGAR',   srcClass: 'edgar',   ticker: 'NVDA', title: '8-K: NVDA Q1 FY2026 earnings — revenue beats by 12%',                       sent: 'pos' },
 ];
 
 const srcStyle = {
@@ -25,39 +28,55 @@ const sentStyle = {
   neu: { bg: 'var(--surface-2)', color: 'var(--text-secondary)' },
 };
 
-const sentLabel = { pos: 'pos', neg: 'neg', neu: 'neu' };
+export default function IngestionFeed({ articleCount, ticker }) {
+  const getFiltered = () => {
+    const filtered = MOCK_ARTICLES.filter(a => a.ticker === ticker);
+    return filtered.length > 0 ? filtered : MOCK_ARTICLES.slice(0, 3);
+  };
 
-export default function IngestionFeed({ articleCount }) {
-  const [feed, setFeed] = useState(MOCK_ARTICLES.slice(0, 7));
+  const [feed, setFeed] = useState(getFiltered);
   const [newCount, setNewCount] = useState(23);
 
   useEffect(() => {
+    setFeed(getFiltered());
+  }, [ticker]);
+
+  useEffect(() => {
     const id = setInterval(() => {
-      const next = MOCK_ARTICLES[Math.floor(Math.random() * MOCK_ARTICLES.length)];
-      setFeed(prev => [next, ...prev.slice(0, 8)]);
+      const pool = MOCK_ARTICLES.filter(a => a.ticker === ticker);
+      if (pool.length > 0) {
+        const next = pool[Math.floor(Math.random() * pool.length)];
+        setFeed(prev => [next, ...prev.slice(0, 8)]);
+      }
       setNewCount(n => n + Math.floor(Math.random() * 3) + 1);
     }, 5000);
     return () => clearInterval(id);
-  }, []);
+  }, [ticker]);
 
   return (
     <div className="card" style={{ gridColumn: 'span 2' }}>
       <div className="card-title">
-        Live ingestion feed
+        Live ingestion feed · <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{ticker}</span>
         <span style={{ fontSize: 10 }}>{newCount} new · last 60s</span>
       </div>
-      {feed.map((a, i) => {
-        const ss = srcStyle[a.srcClass];
-        const se = sentStyle[a.sent];
-        return (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '0.5px solid var(--border)', fontSize: 11 }}>
-            <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, fontFamily: 'var(--font-mono)', background: ss.bg, color: ss.color, flexShrink: 0 }}>{a.src}</span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 500, width: 36, color: 'var(--text-primary)', flexShrink: 0 }}>{a.ticker}</span>
-            <span style={{ flex: 1, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</span>
-            <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: se.bg, color: se.color, flexShrink: 0 }}>{sentLabel[a.sent]}</span>
-          </div>
-        );
-      })}
+      {feed.length === 0 ? (
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '8px 0' }}>
+          No articles yet for {ticker} — ingestion running...
+        </div>
+      ) : (
+        feed.map((a, i) => {
+          const ss = srcStyle[a.srcClass];
+          const se = sentStyle[a.sent];
+          return (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '0.5px solid var(--border)', fontSize: 11 }}>
+              <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, fontFamily: 'var(--font-mono)', background: ss.bg, color: ss.color, flexShrink: 0 }}>{a.src}</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 500, width: 36, color: 'var(--text-primary)', flexShrink: 0 }}>{a.ticker}</span>
+              <span style={{ flex: 1, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title}</span>
+              <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: se.bg, color: se.color, flexShrink: 0 }}>{a.sent}</span>
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }

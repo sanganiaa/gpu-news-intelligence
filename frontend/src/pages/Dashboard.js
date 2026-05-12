@@ -6,11 +6,13 @@ import PipelineMetrics from '../components/Operator/PipelineMetrics';
 import IngestionFeed from '../components/Operator/IngestionFeed';
 import ActiveSignals from '../components/Operator/ActiveSignals';
 import SystemLog from '../components/Operator/SystemLog';
+import SearchBar from '../components/Dashboard/SearchBar';
 
 export default function Dashboard() {
   const [articleCount, setArticleCount] = useState(4821);
   const [signalCount, setSignalCount]   = useState(1204);
   const [gpuUtil, setGpuUtil]           = useState(73);
+  const [ticker, setTicker]             = useState('NVDA');
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -24,14 +26,20 @@ export default function Dashboard() {
   return (
     <div className="app">
       <TopBar articleCount={articleCount} signalCount={signalCount} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <SearchBar value={ticker} onChange={setTicker} />
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+          Showing pipeline data for <strong>{ticker}</strong>
+        </span>
+      </div>
       <KPIRow articleCount={articleCount} signalCount={signalCount} gpuUtil={gpuUtil} />
       <div className="grid2">
         <ServiceHealth />
         <PipelineMetrics gpuUtil={gpuUtil} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
-        <IngestionFeed articleCount={articleCount} />
-        <ActiveSignals />
+        <IngestionFeed articleCount={articleCount} ticker={ticker} />
+        <ActiveSignals ticker={ticker} />
       </div>
       <SystemLog />
     </div>
