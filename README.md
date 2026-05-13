@@ -2,6 +2,8 @@
 
 Real-time financial news ingestion, GPU-powered NLP inference, and actionable trading signal generation.
 
+gpu-news-intelligence.vercel.app 
+
 ## Architecture
 
 ```
