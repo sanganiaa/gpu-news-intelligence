@@ -1,5 +1,7 @@
 # GPU-Accelerated News Intelligence Platform
 
+https://gpu-news-intelligence.vercel.app/
+
 Real-time financial news ingestion, GPU-powered NLP inference, and actionable trading signal generation.
 
 ## Architecture
