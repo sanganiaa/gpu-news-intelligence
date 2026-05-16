@@ -11,14 +11,12 @@ from .dedup import seen_count, clear
 from .schema import Article
 
 app = FastAPI(title="News Ingestion Service")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # Default watchlist — polled automatically on the scheduler
 # Any ticker outside this list can still be fetched on-demand via GET /news/{ticker}
 DEFAULT_TICKERS = [
