@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/pip install *)",
+      "Bash(DATABASE_URL=\"sqlite:///./results.db\" PYTHONPATH=backend/results-db-service .venv/bin/python *)",
+      "Bash(DATABASE_URL=sqlite:///./results.db /Users/aayushsangani/gpu-news-intelligence/.venv/bin/python -c ' *)",
+      "Bash(DATABASE_URL=sqlite:///./results.db /Users/aayushsangani/gpu-news-intelligence/.venv/bin/python -W error::UserWarning -c ' *)"
+    ]
+  }
+}
