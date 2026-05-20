@@ -14,15 +14,20 @@ function Bar({ label, value, display, color }) {
   );
 }
 
-export default function PipelineMetrics({ gpuUtil }) {
+export default function PipelineMetrics({ metrics }) {
+  const rows = metrics?.length ? metrics : [
+    { label: 'Model latency', value: 0, display: 'No metric', color: 'var(--text-hint)' },
+    { label: 'Signal confidence avg', value: 0, display: 'No signals', color: 'var(--text-hint)' },
+    // TODO: backend does not currently expose preprocessing queue depth.
+    { label: 'Preprocessing queue', value: 0, display: 'endpoint missing', color: 'var(--amber)' },
+    // TODO: backend does not currently expose DB write latency from results-db-service.
+    { label: 'DB write latency', value: 0, display: 'endpoint missing', color: 'var(--amber)' },
+  ];
+
   return (
     <div className="card">
       <div className="card-title">Pipeline metrics</div>
-      <Bar label="GPU utilization"       value={gpuUtil} display={`${gpuUtil}%`}   color="var(--blue)" />
-      <Bar label="Preprocessing queue"   value={24}      display="12 pending"       color="var(--amber)" />
-      <Bar label="Dedup hit rate"        value={61}      display="61%"              color="var(--green)" />
-      <Bar label="Signal confidence avg" value={74}      display="74%"              color="var(--green)" />
-      <Bar label="DB write latency"      value={8}       display="4.2ms"            color="var(--green)" />
+      {rows.map(row => <Bar key={row.label} {...row} />)}
     </div>
   );
 }

@@ -95,6 +95,9 @@ def infer_single(text: str) -> dict:
 
     t0 = time.time()
     raw = _pipe(text, max_length=512, truncation=True)
+    # top_k=None wraps single-text output in an extra list: [[{...}]] → [{...}]
+    if raw and isinstance(raw[0], list):
+        raw = raw[0]
     latency_ms = (time.time() - t0) * 1000
 
     label, confidence, probs = _parse_results(raw)

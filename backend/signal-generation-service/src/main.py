@@ -1,6 +1,7 @@
 import asyncio
 import math
 import os
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 
 INFERENCE_URL = os.getenv("INFERENCE_URL", "http://localhost:5003")
 NEWS_URL = os.getenv("NEWS_URL", "http://localhost:5001")
+RESULTS_DB_URL = os.getenv("RESULTS_DB_URL", "http://localhost:5005")
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.65"))
 # Exponential decay rate per hour — half-life ≈ 7h at 0.1
 DECAY_RATE = float(os.getenv("DECAY_RATE", "0.1"))
@@ -112,27 +114,23 @@ def _verdict(net_sentiment: float, article_count: int) -> tuple[str, float]:
 def _parse_sentiment(payload: dict) -> tuple[float, float, float]:
     """
     Normalise inference engine response to (positive, negative, neutral).
-    Handles two formats:
+    Handles:
+      {"probabilities": {"positive": 0.8, "negative": 0.1, "neutral": 0.1}, ...}  ← actual engine format
       {"positive": 0.8, "negative": 0.1, "neutral": 0.1}
-      {"label": "positive", "score": 0.8, "all_scores": {...}}
+      {"sentiment": "positive", "confidence": 0.8}
     """
+    # Actual inference engine format: SentimentResult with nested probabilities
+    probs = payload.get("probabilities")
+    if isinstance(probs, dict):
+        return float(probs.get("positive", 0.0)), float(probs.get("negative", 0.0)), float(probs.get("neutral", 0.0))
+
+    # Flat format
     if "positive" in payload:
-        pos = float(payload.get("positive", 0.0))
-        neg = float(payload.get("negative", 0.0))
-        neu = float(payload.get("neutral", 0.0))
-        return pos, neg, neu
+        return float(payload["positive"]), float(payload["negative"]), float(payload["neutral"])
 
-    # FinBERT pipeline format
-    all_scores = payload.get("all_scores", {})
-    if all_scores:
-        pos = float(all_scores.get("positive", 0.0))
-        neg = float(all_scores.get("negative", 0.0))
-        neu = float(all_scores.get("neutral", 0.0))
-        return pos, neg, neu
-
-    # Fallback: derive from label + score only
-    label = payload.get("label", "neutral")
-    score = float(payload.get("score", 0.0))
+    # Fallback: derive from sentiment label + confidence
+    label = payload.get("sentiment", payload.get("label", "neutral"))
+    score = float(payload.get("confidence", payload.get("score", 0.0)))
     remainder = (1.0 - score) / 2
     if label == "positive":
         return score, remainder, remainder
@@ -141,11 +139,13 @@ def _parse_sentiment(payload: dict) -> tuple[float, float, float]:
     return remainder, remainder, score
 
 
-async def _infer_single(text: str, client: httpx.AsyncClient) -> Optional[dict]:
+async def _infer_single(
+    article_id: str, ticker: str, title: str, text: str, client: httpx.AsyncClient
+) -> Optional[dict]:
     try:
         resp = await client.post(
             f"{INFERENCE_URL}/inference/sentiment",
-            json={"text": text},
+            json={"id": article_id, "ticker": ticker, "title": title, "text": text},
             timeout=10.0,
         )
         resp.raise_for_status()
@@ -155,17 +155,20 @@ async def _infer_single(text: str, client: httpx.AsyncClient) -> Optional[dict]:
         return None
 
 
-async def _infer_batch(texts: list[str], client: httpx.AsyncClient) -> Optional[list[dict]]:
+async def _infer_batch(
+    infer_articles: list[dict], client: httpx.AsyncClient
+) -> Optional[list[dict]]:
     try:
         resp = await client.post(
             f"{INFERENCE_URL}/inference/batch",
-            json={"texts": texts},
+            json={"articles": infer_articles},
             timeout=30.0,
         )
         resp.raise_for_status()
         data = resp.json()
-        if isinstance(data, list) and len(data) == len(texts):
-            return data
+        results = data.get("results") if isinstance(data, dict) else None
+        if isinstance(results, list) and len(results) == len(infer_articles):
+            return results
         return None
     except Exception as exc:
         print(f"[Inference] batch call failed: {exc}")
@@ -184,6 +187,36 @@ async def _fetch_articles(ticker: str, client: httpx.AsyncClient) -> list[dict]:
     except Exception as exc:
         print(f"[News] fetch failed for {ticker}: {exc}")
         return []
+
+
+# ── Results DB persistence ─────────────────────────────────────────────────────
+
+async def _store_signal(signal: Signal, client: httpx.AsyncClient) -> None:
+    payload = {
+        "id": str(uuid.uuid4()),
+        "ticker": signal.ticker,
+        "signal": signal.verdict,
+        "confidence": signal.confidence,
+        "sentiment_score": signal.net_sentiment,
+        "reasoning": (
+            f"{signal.article_count} article(s) analyzed; "
+            f"weighted net sentiment {signal.net_sentiment:+.4f}"
+        ),
+        "article_ids": [
+            a.article_id for a in signal.supporting_articles if a.article_id
+        ],
+        "model_name": "finbert",
+        "created_at": signal.generated_at.isoformat(),
+    }
+    try:
+        resp = await client.post(
+            f"{RESULTS_DB_URL}/results/signal",
+            json=payload,
+            timeout=5.0,
+        )
+        resp.raise_for_status()
+    except Exception as exc:
+        print(f"[ResultsDB] store failed: {exc}")
 
 
 # ── Core aggregation ───────────────────────────────────────────────────────────
@@ -205,18 +238,26 @@ async def _compute_signal(ticker: str) -> Signal:
                 supporting_articles=[],
             )
 
-        # Truncate each text to FinBERT's 512-token limit
-        texts = [
-            (a.get("title", "") + " " + (a.get("summary") or ""))[:512].strip()
+        # Build per-article inference payloads — keep title separate so the
+        # engine can prepend it before FinBERT tokenisation.
+        infer_articles = [
+            {
+                "id": a.get("id") or str(uuid.uuid4()),
+                "ticker": ticker,
+                "title": a.get("title", ""),
+                "text": (a.get("summary") or "")[:512].strip(),
+            }
             for a in articles
         ]
 
         # Prefer batch; fall back to individual calls for the 5 newest articles
-        sentiments = await _infer_batch(texts, client)
+        sentiments = await _infer_batch(infer_articles, client)
         if sentiments is None:
             sentiments = []
-            for text in texts[:5]:
-                result = await _infer_single(text, client)
+            for art in infer_articles[:5]:
+                result = await _infer_single(
+                    art["id"], art["ticker"], art["title"], art["text"], client
+                )
                 sentiments.append(result)
             # Pad with None for articles we skipped
             sentiments += [None] * (len(articles) - len(sentiments))
@@ -300,6 +341,19 @@ async def top_picks(limit: int = Query(5, le=20)):
     return buy_signals[:limit]
 
 
+@app.post("/signals/ingest/{ticker}", response_model=Signal)
+async def ingest_and_signal(ticker: str):
+    """Fetch articles from news service, run inference, persist to results DB, return signal."""
+    ticker = ticker.upper()
+    signal = await _compute_signal(ticker)
+    _set_cached(ticker, signal)
+
+    async with httpx.AsyncClient() as client:
+        await _store_signal(signal, client)
+
+    return signal
+
+
 @app.get("/signals/{ticker}", response_model=Signal)
 async def get_signal(ticker: str, refresh: bool = Query(False)):
     """Return the current BUY/HOLD/SELL signal for a ticker."""
@@ -322,10 +376,14 @@ async def generate_signal(req: GenerateRequest):
     pub_dt = req.published_at or now
     ticker = req.ticker.upper()
 
-    text = (req.title + " " + req.text)[:512].strip()
-
     async with httpx.AsyncClient() as client:
-        sentiment = await _infer_single(text, client)
+        sentiment = await _infer_single(
+            req.article_id or str(uuid.uuid4()),
+            ticker,
+            req.title,
+            req.text[:512].strip(),
+            client,
+        )
 
     if not sentiment:
         raise HTTPException(status_code=503, detail="Inference engine unavailable")

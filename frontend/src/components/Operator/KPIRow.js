@@ -13,10 +13,10 @@ function KPI({ label, value, sub }) {
 export default function KPIRow({ articleCount, signalCount, gpuUtil }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
-      <KPI label="Articles ingested" value={articleCount.toLocaleString()} sub="+23 last 60s" />
-      <KPI label="Inference throughput" value="38.4" sub="articles/sec · GPU" />
-      <KPI label="Signals generated" value={signalCount.toLocaleString()} sub="BUY 41% · HOLD 38% · SELL 21%" />
-      <KPI label="GPU utilization" value={`${gpuUtil}%`} sub="NVIDIA T4 · CUDA 12.3" />
+      <KPI label="Articles ingested" value={articleCount.value} sub={articleCount.sub} />
+      <KPI label="Inference throughput" value={gpuUtil.value} sub={gpuUtil.sub} />
+      <KPI label="Signals generated" value={signalCount.value} sub={signalCount.sub} />
+      <KPI label="Signal accuracy" value={signalCount.accuracy} sub={signalCount.accuracySub} />
     </div>
   );
 }

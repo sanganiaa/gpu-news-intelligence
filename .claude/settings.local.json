@@ -4,7 +4,12 @@
       "Bash(.venv/bin/pip install *)",
       "Bash(DATABASE_URL=\"sqlite:///./results.db\" PYTHONPATH=backend/results-db-service .venv/bin/python *)",
       "Bash(DATABASE_URL=sqlite:///./results.db /Users/aayushsangani/gpu-news-intelligence/.venv/bin/python -c ' *)",
-      "Bash(DATABASE_URL=sqlite:///./results.db /Users/aayushsangani/gpu-news-intelligence/.venv/bin/python -W error::UserWarning -c ' *)"
+      "Bash(DATABASE_URL=sqlite:///./results.db /Users/aayushsangani/gpu-news-intelligence/.venv/bin/python -W error::UserWarning -c ' *)",
+      "Bash(curl -s http://localhost:5001/health)",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s http://localhost:5003/health)",
+      "Bash(curl *)",
+      "Bash(.venv/bin/python -)"
     ]
   }
 }
