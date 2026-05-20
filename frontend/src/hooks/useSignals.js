@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchSignal, fetchTopPicks } from '../api/signals';
 
-const SIGNAL_POLL_MS = 15000;
+const SIGNAL_POLL_MS = 30000;
 
 export function useSignals(ticker) {
   const [state, setState] = useState({

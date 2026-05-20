@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchArticlesByTicker, fetchLatestArticles, fetchNewsTickers, fetchSourceStatus } from '../api/news';
 
-const NEWS_POLL_MS = 15000;
+const NEWS_POLL_MS = 30000;
 
 export function useNews(ticker, { limit = 20 } = {}) {
   const [state, setState] = useState({

@@ -107,6 +107,25 @@ def get_latest(limit: int = Query(50, le=200)):
     return [a.model_dump() for a in sorted_articles[:limit]]
 
 
+# Specific literal routes must be declared before /news/{ticker} so FastAPI
+# doesn't swallow them as ticker path parameters.
+@app.get("/news/tickers")
+def list_tickers():
+    """List all tickers currently in the store with their article counts."""
+    return {ticker: len(articles) for ticker, articles in _store.items()}
+
+
+@app.get("/news/sources/status")
+def source_status():
+    """Article count broken down by source across all tickers."""
+    counts: dict[str, int] = {"yahoo_rss": 0, "newsapi": 0, "sec_edgar": 0}
+    for articles in _store.values():
+        for a in articles:
+            if a.source in counts:
+                counts[a.source] += 1
+    return counts
+
+
 @app.get("/news/{ticker}")
 async def get_by_ticker(
     ticker: str,
@@ -151,23 +170,6 @@ async def trigger_ingest(ticker: str | None = None):
             "status": "ok",
             "total_articles": sum(len(v) for v in _store.values()),
         }
-
-
-@app.get("/news/sources/status")
-def source_status():
-    """Article count broken down by source across all tickers."""
-    counts: dict[str, int] = {"yahoo_rss": 0, "newsapi": 0, "sec_edgar": 0}
-    for articles in _store.values():
-        for a in articles:
-            if a.source in counts:
-                counts[a.source] += 1
-    return counts
-
-
-@app.get("/news/tickers")
-def list_tickers():
-    """List all tickers currently in the store with their article counts."""
-    return {ticker: len(articles) for ticker, articles in _store.items()}
 
 
 @app.delete("/news/reset")

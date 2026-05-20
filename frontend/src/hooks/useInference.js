@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { inferBatchSentiment, fetchInferenceHealth } from '../api/inference';
 import { preprocessArticles } from '../api/preprocessing';
 
-const INFERENCE_METRICS_POLL_MS = 15000;
+const INFERENCE_METRICS_POLL_MS = 30000;
 
 export function useInference(articles = []) {
   const articlesRef = useRef(articles);

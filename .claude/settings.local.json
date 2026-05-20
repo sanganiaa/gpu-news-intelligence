@@ -9,7 +9,13 @@
       "Bash(python3 -m json.tool)",
       "Bash(curl -s http://localhost:5003/health)",
       "Bash(curl *)",
-      "Bash(.venv/bin/python -)"
+      "Bash(.venv/bin/python -)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(m.upper\\(\\), p\\) for p,methods in d['paths'].items\\(\\) for m in methods if m != 'options']\")",
+      "Bash(npm start *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'verdict={d[\\\\\"verdict\\\\\"]} confidence={d[\\\\\"confidence\\\\\"]} article_count={d[\\\\\"article_count\\\\\"]}'\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'{len\\(d\\)} BUY signals'\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'total={d[\\\\\"total_signals\\\\\"]} accuracy={d[\\\\\"accuracy\\\\\"]}'\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'loaded={d[\\\\\"model_loaded\\\\\"]} device={d[\\\\\"device\\\\\"]}'\\)\")"
     ]
   }
 }
