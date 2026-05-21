@@ -1,5 +1,17 @@
 import React, { useMemo } from 'react';
 
+const stripHtml = (value) => {
+  if (!value) return "";
+  return String(value)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
 const srcStyle = {
   yahoo:   { bg: '#E6F1FB', color: '#0C447C' },
   newsapi: { bg: '#EEEDFE', color: '#3C3489' },
@@ -190,15 +202,19 @@ export default function IngestionFeed({ articles = [], ticker, loading, error, o
           const implicationStyle = sentStyle[implicationTone(implication, sentiment)] || sentStyle.neutral;
           return (
             <div
-              key={a.id}
-              style={{
-                border: `1px solid ${borderColor}`,
-                borderLeft: `4px solid ${borderColor}`,
-                borderRadius: 8,
-                padding: 10,
-                marginBottom: 10,
-                background: 'var(--surface)',
-              }}
+               key={a.id}
+               style={{
+                  border: `1px solid ${borderColor}`,
+                  borderLeft: `4px solid ${borderColor}`,
+                  borderRadius: 8,
+                  padding: 10,
+                  marginBottom: 10,
+                  background: 'var(--surface)',
+                  minWidth: 0,
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  overflowWrap: 'anywhere',
+               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7, minWidth: 0 }}>
                 <button
