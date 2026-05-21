@@ -6,6 +6,7 @@ from .schema import Article, ProcessedArticle
 from .cleaner import clean
 from .nlp import process as nlp_process
 from .ticker_matcher import find_tickers
+from .summarizer import summarize
 
 app = FastAPI(title="Preprocessing Service")
 app.add_middleware(
@@ -33,6 +34,15 @@ def _preprocess(article: Article) -> ProcessedArticle:
     tokens, entities = nlp_process(clean_text)
     mentioned_tickers = find_tickers(clean_text, base_ticker=article.ticker)
 
+    summary_ai, investment_implication, catalyst_tag = None, None, None
+    try:
+        summary_ai, investment_implication, catalyst_tag = summarize(
+            title=article.title,
+            text=clean_text,
+        )
+    except Exception as exc:
+        print(f"[preprocessing] summarization failed for {article.id}: {exc}")
+
     return ProcessedArticle(
         id=article.id,
         ticker=article.ticker,
@@ -49,6 +59,9 @@ def _preprocess(article: Article) -> ProcessedArticle:
         mentioned_tickers=mentioned_tickers,
         word_count=len(tokens),
         processed_at=datetime.now(timezone.utc),
+        summary_ai=summary_ai,
+        investment_implication=investment_implication,
+        catalyst_tag=catalyst_tag,
     )
 
 

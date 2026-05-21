@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from .sources.yahoo import fetch_yahoo_rss
 from .sources.newsapi import fetch_newsapi
 from .sources.edgar import fetch_edgar_8k
+from .sources.fred import fetch_fred_indicators
+from .sources.reddit import fetch_reddit_top_posts
 from .dedup import seen_count, clear
 from .schema import Article
 
@@ -21,7 +23,9 @@ app.add_middleware(
 # Any ticker outside this list can still be fetched on-demand via GET /news/{ticker}
 DEFAULT_TICKERS = [
     "NVDA", "AAPL", "MSFT", "META", "TSLA",
-    "AMZN", "AMD", "SNOW", "NBIS", "PLTR", "ARM", "SMCI",
+    "AMZN", "AMD", "SNOW", "PLTR", "SMCI",
+    "INTC", "QCOM", "ARM", "AVGO", "TSM",
+    "ASML", "ORCL", "CRM", "ADBE", "NOW",
 ]
 
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL_SECONDS", 60))
@@ -72,6 +76,16 @@ async def ingest_watchlist():
     for ticker in DEFAULT_TICKERS:
         articles = await ingest_ticker(ticker)
         total += len(articles)
+
+    macro_articles = await fetch_fred_indicators()
+    reddit_articles = await fetch_reddit_top_posts()
+    store_articles(macro_articles + reddit_articles)
+    total += len(macro_articles) + len(reddit_articles)
+
+    print(
+        f"[Scheduler] Non-ticker sources "
+        f"(FRED: {len(macro_articles)}, Reddit: {len(reddit_articles)})"
+    )
     print(f"[Scheduler] Cycle complete — {total} new articles, {seen_count()} total deduped\n")
 
 
@@ -118,7 +132,13 @@ def list_tickers():
 @app.get("/news/sources/status")
 def source_status():
     """Article count broken down by source across all tickers."""
-    counts: dict[str, int] = {"yahoo_rss": 0, "newsapi": 0, "sec_edgar": 0}
+    counts: dict[str, int] = {
+        "yahoo_rss": 0,
+        "newsapi": 0,
+        "sec_edgar": 0,
+        "fred": 0,
+        "reddit": 0,
+    }
     for articles in _store.values():
         for a in articles:
             if a.source in counts:

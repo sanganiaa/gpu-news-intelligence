@@ -52,3 +52,8 @@ class ProcessedArticle(BaseModel):
 
     word_count: int
     processed_at: datetime
+
+    # AI-generated summarization fields
+    summary_ai: Optional[str] = None
+    investment_implication: Optional[str] = None
+    catalyst_tag: Optional[str] = None

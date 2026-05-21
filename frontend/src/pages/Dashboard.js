@@ -1,12 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import TopBar from '../components/Operator/TopBar';
 import KPIRow from '../components/Operator/KPIRow';
 import ServiceHealth from '../components/Operator/ServiceHealth';
 import PipelineMetrics from '../components/Operator/PipelineMetrics';
 import IngestionFeed from '../components/Operator/IngestionFeed';
 import ActiveSignals from '../components/Operator/ActiveSignals';
+import TickerDrilldown from '../components/Operator/TickerDrilldown';
 import SystemLog from '../components/Operator/SystemLog';
 import SearchBar from '../components/Dashboard/SearchBar';
+import MarketOverview from '../components/MarketOverview';
 import { getHealth } from '../api/client';
 import { fetchMetrics, fetchSignalAccuracy, fetchTickerHistory } from '../api/results';
 import { useInference } from '../hooks/useInference';
@@ -52,6 +54,8 @@ function newestTimestamp(...values) {
 
 export default function Dashboard() {
   const [ticker, setTicker] = useState('NVDA');
+  const [activeTab, setActiveTab] = useState('operator');
+  const [drilldownTicker, setDrilldownTicker] = useState(null);
   const news = useNews(ticker);
   const signals = useSignals(ticker);
   const inference = useInference(news.articles);
@@ -142,6 +146,12 @@ export default function Dashboard() {
   }, [ticker]);
 
   const selectedSignal = signals.selected;
+  const openTickerDrilldown = useCallback(clickedTicker => {
+    if (!clickedTicker) return;
+    setTicker(clickedTicker);
+    setDrilldownTicker(clickedTicker);
+  }, []);
+
   const supportingById = useMemo(() => {
     const map = new Map();
     (selectedSignal?.supporting_articles || []).forEach(article => {
@@ -166,17 +176,27 @@ export default function Dashboard() {
     return map;
   }, [selectedSignal, inference.sentiments]);
 
-  const displayedArticles = useMemo(() => {
+  const enrichedArticles = useMemo(() => {
     const raw = news.articles.length ? news.articles : (resultsState.history?.articles || []);
-    return raw.slice(0, 12).map(article => {
+    return raw.map(article => {
       const support = supportingById.get(article.id);
       return {
         ...article,
         sentiment: support?.sentiment,
         sentiment_confidence: support?.confidence,
+        positive: support?.positive ?? article.positive,
+        negative: support?.negative ?? article.negative,
+        neutral: support?.neutral ?? article.neutral,
+        latency_ms: support?.latency_ms ?? article.latency_ms,
       };
     });
   }, [news.articles, resultsState.history, supportingById]);
+
+  const displayedArticles = useMemo(() => enrichedArticles.slice(0, 12), [enrichedArticles]);
+  const drilldownSignal = useMemo(
+    () => signals.signals.find(signal => signal.ticker === drilldownTicker) || (selectedSignal?.ticker === drilldownTicker ? selectedSignal : null),
+    [drilldownTicker, selectedSignal, signals.signals],
+  );
 
   const signalDistribution = useMemo(() => countBy(signals.signals, 'verdict'), [signals.signals]);
   const averageConfidence = useMemo(() => {
@@ -302,16 +322,70 @@ export default function Dashboard() {
           {(news.error || signals.error || resultsState.error) && ' · partial data'}
         </span>
       </div>
-      <KPIRow articleCount={kpis.articleCount} signalCount={kpis.signalCount} gpuUtil={kpis.inference} />
-      <div className="grid2">
-        <ServiceHealth services={serviceState.services} loading={serviceState.loading} />
-        <PipelineMetrics metrics={pipelineMetrics} />
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12, borderBottom: '0.5px solid var(--border-strong)' }}>
+        {[
+          { key: 'operator', label: 'Operator' },
+          { key: 'market', label: 'Market overview' },
+        ].map(tab => {
+          const selected = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                border: 0,
+                borderBottom: selected ? '2px solid var(--text-primary)' : '2px solid transparent',
+                background: 'transparent',
+                color: selected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                padding: '8px 10px',
+                fontSize: 12,
+                fontWeight: selected ? 700 : 500,
+                cursor: 'pointer',
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
-        <IngestionFeed articles={displayedArticles} ticker={ticker} loading={news.loading || resultsState.loading} error={news.error} />
-        <ActiveSignals ticker={ticker} signals={signals.signals} loading={signals.loading} error={signals.error} />
-      </div>
-      <SystemLog logs={systemLogs} />
+      {activeTab === 'operator' ? (
+        <>
+          <KPIRow articleCount={kpis.articleCount} signalCount={kpis.signalCount} gpuUtil={kpis.inference} />
+          <div className="grid2">
+            <ServiceHealth services={serviceState.services} loading={serviceState.loading} />
+            <PipelineMetrics metrics={pipelineMetrics} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+            <IngestionFeed
+              articles={displayedArticles}
+              ticker={ticker}
+              loading={news.loading || resultsState.loading}
+              error={news.error}
+              onTickerClick={openTickerDrilldown}
+            />
+            <ActiveSignals ticker={ticker} signals={signals.signals} loading={signals.loading} error={signals.error} onTickerClick={openTickerDrilldown} />
+          </div>
+          {drilldownTicker && (
+            <TickerDrilldown
+              ticker={drilldownTicker}
+              articles={enrichedArticles}
+              signal={drilldownSignal}
+              onClose={() => setDrilldownTicker(null)}
+            />
+          )}
+          <SystemLog logs={systemLogs} />
+        </>
+      ) : (
+        <MarketOverview
+          latestArticles={news.latest}
+          tickerArticles={news.articles}
+          tickers={news.tickers}
+          signals={signals.signals}
+          loading={news.loading || signals.loading}
+          error={news.error}
+        />
+      )}
     </div>
   );
 }

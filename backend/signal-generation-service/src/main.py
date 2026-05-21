@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import math
 import os
 import uuid
@@ -6,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -17,11 +19,15 @@ CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.65"))
 # Exponential decay rate per hour — half-life ≈ 7h at 0.1
 DECAY_RATE = float(os.getenv("DECAY_RATE", "0.1"))
 SIGNAL_TTL_SECONDS = int(os.getenv("SIGNAL_TTL_SECONDS", "300"))
+SIGNAL_INGEST_INTERVAL_SECONDS = int(os.getenv("SIGNAL_INGEST_INTERVAL_SECONDS", "3600"))
 
 DEFAULT_TICKERS = [
     "NVDA", "AAPL", "MSFT", "META", "TSLA",
     "AMZN", "AMD", "SNOW", "NBIS", "PLTR", "ARM", "SMCI",
 ]
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("signal-generation-service")
 
 app = FastAPI(title="Signal Generation Service")
 app.add_middleware(
@@ -64,10 +70,26 @@ class GenerateRequest(BaseModel):
     article_id: Optional[str] = None
 
 
+class IngestTickerResult(BaseModel):
+    ticker: str
+    status: str
+    signal: Optional[Signal] = None
+    error: Optional[str] = None
+
+
+class IngestAllResult(BaseModel):
+    started_at: datetime
+    completed_at: datetime
+    source: str
+    tickers: list[str]
+    results: list[IngestTickerResult]
+
+
 # ── In-memory signal cache ─────────────────────────────────────────────────────
 
 # { "NVDA": {"signal": Signal, "expires_at": float} }
 _cache: dict[str, dict] = {}
+_scheduler: Optional[AsyncIOScheduler] = None
 
 
 def _get_cached(ticker: str) -> Optional[Signal]:
@@ -219,6 +241,72 @@ async def _store_signal(signal: Signal, client: httpx.AsyncClient) -> None:
         print(f"[ResultsDB] store failed: {exc}")
 
 
+# ── Ingestion orchestration ────────────────────────────────────────────────────
+
+async def _ingest_ticker_signal(ticker: str, client: httpx.AsyncClient) -> Signal:
+    ticker = ticker.upper()
+    signal = await _compute_signal(ticker)
+    _set_cached(ticker, signal)
+    await _store_signal(signal, client)
+    return signal
+
+
+async def _ingest_all_signals(source: str) -> IngestAllResult:
+    started_at = datetime.now(timezone.utc)
+    tickers = [ticker.upper() for ticker in DEFAULT_TICKERS]
+    logger.info(
+        "[SignalsIngest] %s run started at %s for tickers=%s",
+        source,
+        started_at.isoformat(),
+        ",".join(tickers),
+    )
+
+    results: list[IngestTickerResult] = []
+    async with httpx.AsyncClient() as client:
+        for ticker in tickers:
+            try:
+                signal = await _ingest_ticker_signal(ticker, client)
+                results.append(IngestTickerResult(
+                    ticker=ticker,
+                    status="ok",
+                    signal=signal,
+                ))
+            except Exception as exc:
+                logger.exception("[SignalsIngest] %s failed for %s", source, ticker)
+                results.append(IngestTickerResult(
+                    ticker=ticker,
+                    status="error",
+                    error=str(exc),
+                ))
+
+    completed_at = datetime.now(timezone.utc)
+    summary = [
+        {
+            "ticker": result.ticker,
+            "status": result.status,
+            "verdict": result.signal.verdict if result.signal else None,
+            "confidence": result.signal.confidence if result.signal else None,
+            "article_count": result.signal.article_count if result.signal else None,
+            "error": result.error,
+        }
+        for result in results
+    ]
+    logger.info(
+        "[SignalsIngest] %s run completed at %s results=%s",
+        source,
+        completed_at.isoformat(),
+        summary,
+    )
+
+    return IngestAllResult(
+        started_at=started_at,
+        completed_at=completed_at,
+        source=source,
+        tickers=tickers,
+        results=results,
+    )
+
+
 # ── Core aggregation ───────────────────────────────────────────────────────────
 
 async def _compute_signal(ticker: str) -> Signal:
@@ -313,6 +401,36 @@ async def _compute_signal(ticker: str) -> Signal:
         )
 
 
+# ── Scheduler ──────────────────────────────────────────────────────────────────
+
+@app.on_event("startup")
+async def startup():
+    """Start the periodic all-ticker signal ingestion scheduler."""
+    global _scheduler
+    _scheduler = AsyncIOScheduler(timezone=timezone.utc)
+    _scheduler.add_job(
+        _ingest_all_signals,
+        "interval",
+        seconds=SIGNAL_INGEST_INTERVAL_SECONDS,
+        args=["scheduler"],
+        id="signals_ingest_all",
+        coalesce=True,
+        max_instances=1,
+    )
+    _scheduler.start()
+    logger.info(
+        "[SignalsIngest] Scheduled all-ticker ingestion every %ss",
+        SIGNAL_INGEST_INTERVAL_SECONDS,
+    )
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Stop the scheduler cleanly when the service exits."""
+    if _scheduler:
+        _scheduler.shutdown(wait=False)
+
+
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
@@ -323,6 +441,7 @@ def health():
         "cached_tickers": list(_cache.keys()),
         "inference_url": INFERENCE_URL,
         "news_url": NEWS_URL,
+        "signal_ingest_interval_seconds": SIGNAL_INGEST_INTERVAL_SECONDS,
     }
 
 
@@ -341,16 +460,31 @@ async def top_picks(limit: int = Query(5, le=20)):
     return buy_signals[:limit]
 
 
+@app.post("/signals/ingest/all", response_model=IngestAllResult)
+async def ingest_all_signals():
+    """Fetch articles, run inference, and persist signals for all tracked tickers."""
+    return await _ingest_all_signals("manual")
+
+
 @app.post("/signals/ingest/{ticker}", response_model=Signal)
 async def ingest_and_signal(ticker: str):
     """Fetch articles from news service, run inference, persist to results DB, return signal."""
     ticker = ticker.upper()
-    signal = await _compute_signal(ticker)
-    _set_cached(ticker, signal)
+    started_at = datetime.now(timezone.utc)
 
     async with httpx.AsyncClient() as client:
-        await _store_signal(signal, client)
+        signal = await _ingest_ticker_signal(ticker, client)
 
+    logger.info(
+        "[SignalsIngest] manual run at %s result=%s",
+        started_at.isoformat(),
+        {
+            "ticker": signal.ticker,
+            "verdict": signal.verdict,
+            "confidence": signal.confidence,
+            "article_count": signal.article_count,
+        },
+    )
     return signal
 
 

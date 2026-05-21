@@ -15,7 +15,7 @@ function formatTime(value) {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function ActiveSignals({ ticker, signals = [], loading, error }) {
+export default function ActiveSignals({ ticker, signals = [], loading, error, onTickerClick }) {
   const isInList = signals.find(s => s.ticker === ticker);
 
   return (
@@ -52,7 +52,23 @@ export default function ActiveSignals({ ticker, signals = [], loading, error }) 
               transition: 'all 0.2s',
             }}
           >
-            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 500, width: 44, color: 'var(--text-primary)' }}>{s.ticker}</span>
+            <button
+              type="button"
+              onClick={() => onTickerClick?.(s.ticker)}
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontWeight: 500,
+                width: 44,
+                color: 'var(--text-primary)',
+                background: 'transparent',
+                border: 0,
+                padding: 0,
+                textAlign: 'left',
+                cursor: onTickerClick ? 'pointer' : 'default',
+              }}
+            >
+              {s.ticker}
+            </button>
             <span style={{ fontSize: 10, fontWeight: 500, background: vs.bg, color: vs.color, padding: '2px 7px', borderRadius: 4, minWidth: 36, textAlign: 'center' }}>{s.verdict}</span>
             <div>
               <div style={{ height: 4, background: 'var(--surface-2)', borderRadius: 3, overflow: 'hidden' }}>

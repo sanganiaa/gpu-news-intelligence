@@ -12,6 +12,9 @@ COMPANY_NAMES = {
     "META": "Meta", "TSLA": "Tesla", "AMZN": "Amazon",
     "AMD": "AMD", "SNOW": "Snowflake", "NBIS": "Nebius",
     "PLTR": "Palantir", "ARM": "ARM Holdings", "SMCI": "Super Micro",
+    "INTC": "Intel", "QCOM": "Qualcomm", "AVGO": "Broadcom",
+    "TSM": "Taiwan Semiconductor", "ASML": "ASML", "ORCL": "Oracle",
+    "CRM": "Salesforce", "ADBE": "Adobe", "NOW": "ServiceNow",
 }
 
 
