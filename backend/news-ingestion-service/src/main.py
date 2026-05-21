@@ -42,13 +42,55 @@ def _all_articles() -> list[Article]:
     return [a for articles in _store.values() for a in articles]
 
 
+def _infer_content_type(article: Article) -> ContentType:
+    source = (article.source or "").lower()
+    title = (article.title or "").lower()
+    if (
+        article.content_type == "sec_filing"
+        or article.is_filing
+        or article.filing_type
+        or "edgar" in source
+        or source == "sec"
+        or "sec filing" in title
+        or "form 8-k" in title
+        or "form 10-k" in title
+        or "form 10-q" in title
+        or "8-k" in title
+        or "10-k" in title
+        or "10-q" in title
+    ):
+        return "sec_filing"
+    if article.content_type in {"news", "reddit", "macro"}:
+        return article.content_type
+    if source == "reddit":
+        return "reddit"
+    if source == "fred" or article.ticker.upper() == "MACRO":
+        return "macro"
+    return "news"
+
+
+def _article_payload(article: Article) -> dict:
+    payload = article.model_dump()
+    content_type = _infer_content_type(article)
+    payload["content_type"] = content_type
+    payload["is_filing"] = bool(
+        article.is_filing
+        or article.filing_type
+        or content_type == "sec_filing"
+    )
+    if payload["is_filing"] and not payload.get("filing_type"):
+        payload["filing_type"] = "SEC filing"
+    payload["tickers"] = [article.ticker]
+    return payload
+
+
 def _filter_articles(
     articles: list[Article],
     content_type: ContentType | None = None,
 ) -> list[Article]:
     if not content_type:
         return articles
-    return [a for a in articles if a.content_type == content_type]
+    return [a for a in articles if _infer_content_type(a) == content_type]
 
 
 def store_articles(articles: list[Article]):
@@ -137,7 +179,7 @@ def get_latest(
     """Return most recently ingested articles across all tickers."""
     all_articles = _filter_articles(_all_articles(), content_type)
     sorted_articles = sorted(all_articles, key=lambda a: a.ingested_at, reverse=True)
-    return [a.model_dump() for a in sorted_articles[:limit]]
+    return [_article_payload(a) for a in sorted_articles[:limit]]
 
 
 # Specific literal routes must be declared before /news/{ticker} so FastAPI
@@ -151,10 +193,11 @@ def get_articles(
     """Return ingested items, optionally filtered by ticker and content type."""
     articles = _all_articles()
     if ticker:
-        articles = [a for a in articles if a.ticker == ticker.upper()]
+        selected = ticker.upper()
+        articles = [a for a in articles if a.ticker.upper() == selected]
     articles = _filter_articles(articles, content_type)
     sorted_articles = sorted(articles, key=lambda a: a.ingested_at, reverse=True)
-    return [a.model_dump() for a in sorted_articles[:limit]]
+    return [_article_payload(a) for a in sorted_articles[:limit]]
 
 
 @app.get("/news/tickers")
@@ -203,7 +246,7 @@ async def get_by_ticker(
         return []
 
     sorted_articles = sorted(articles, key=lambda a: a.published_at, reverse=True)
-    return [a.model_dump() for a in sorted_articles[:limit]]
+    return [_article_payload(a) for a in sorted_articles[:limit]]
 
 
 @app.post("/news/ingest")

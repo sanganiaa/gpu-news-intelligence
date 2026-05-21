@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchArticlesByTicker, fetchLatestArticles, fetchNewsTickers, fetchSourceStatus } from '../api/news';
+import { fetchArticles, fetchArticlesByTicker, fetchLatestArticles, fetchNewsTickers, fetchSourceStatus } from '../api/news';
 
 const NEWS_POLL_MS = 30000;
 
@@ -23,8 +23,11 @@ export function useNews(ticker, { limit = 20 } = {}) {
       inFlight = true;
       if (initial) setState(prev => ({ ...prev, loading: true, error: null }));
 
+      const selectedArticles = fetchArticles({ ticker, limit, contentType: 'news' })
+        .catch(() => fetchArticlesByTicker(ticker, { limit, contentType: 'news' }));
+
       Promise.allSettled([
-        fetchArticlesByTicker(ticker, { limit, contentType: 'news' }),
+        selectedArticles,
         fetchLatestArticles(50),
         fetchNewsTickers(),
         fetchSourceStatus(),

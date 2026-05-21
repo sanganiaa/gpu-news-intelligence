@@ -53,12 +53,6 @@ function newestTimestamp(...values) {
   return new Date(Math.max(...timestamps)).toISOString();
 }
 
-function isLegacySecFiling(article = {}) {
-  if (article.is_filing || article.filing_type) return true;
-  const source = String(article.source || '').toLowerCase();
-  return source.includes('edgar') || source.includes('sec');
-}
-
 export default function Dashboard() {
   const [ticker, setTicker] = useState('NVDA');
   const [activeTab, setActiveTab] = useState('operator');
@@ -200,12 +194,6 @@ export default function Dashboard() {
   }, [news.articles, resultsState.history, supportingById]);
 
   const displayedArticles = useMemo(() => enrichedArticles.slice(0, 12), [enrichedArticles]);
-  const newsFeedArticles = useMemo(
-    () => enrichedArticles
-      .filter(article => (article.content_type || 'news') === 'news' && !isLegacySecFiling(article))
-      .slice(0, 12),
-    [enrichedArticles],
-  );
   const drilldownSignal = useMemo(
     () => signals.signals.find(signal => signal.ticker === drilldownTicker) || (selectedSignal?.ticker === drilldownTicker ? selectedSignal : null),
     [drilldownTicker, selectedSignal, signals.signals],
@@ -372,7 +360,7 @@ export default function Dashboard() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
             <IngestionFeed
-              articles={newsFeedArticles}
+              articles={enrichedArticles}
               ticker={ticker}
               loading={news.loading || resultsState.loading}
               error={news.error}

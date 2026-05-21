@@ -146,6 +146,16 @@ def signal_accuracy(
 def write_article(body: ArticleCreate, db: Session = Depends(get_db)):
     existing = db.get(Article, body.id)
     if existing:
+        if body.is_filing or body.filing_type or body.content_type == "sec_filing":
+            existing.content_type = "sec_filing"
+            existing.is_filing = True
+            existing.filing_type = existing.filing_type or body.filing_type
+            db.commit()
+            db.refresh(existing)
+        elif not existing.content_type:
+            existing.content_type = body.content_type or "news"
+            db.commit()
+            db.refresh(existing)
         # Idempotent — return the stored record without error
         return existing
 

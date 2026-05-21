@@ -105,7 +105,18 @@ function isSecFiling(article = {}) {
 }
 
 function isReadableNews(article = {}) {
-  return (article.content_type || 'news') === 'news' && !isSecFiling(article);
+  return !isSecFiling(article);
+}
+
+function articleTickers(article = {}) {
+  if (Array.isArray(article.tickers)) return article.tickers.map(t => String(t).toUpperCase());
+  if (article.ticker) return [String(article.ticker).toUpperCase()];
+  return [];
+}
+
+function matchesTicker(article, ticker) {
+  if (!ticker) return true;
+  return articleTickers(article).includes(String(ticker).toUpperCase());
 }
 
 function SentimentBar({ article }) {
@@ -127,10 +138,19 @@ function SentimentBar({ article }) {
 }
 
 export default function IngestionFeed({ articles = [], ticker, loading, error, onTickerClick }) {
-  const newsArticles = useMemo(
-    () => articles.filter(isReadableNews),
-    [articles],
-  );
+  const feedStats = useMemo(() => {
+    const selectedArticles = articles.filter(article => matchesTicker(article, ticker));
+    const secFilings = selectedArticles.filter(isSecFiling);
+    const newsArticles = selectedArticles.filter(isReadableNews);
+    return {
+      selectedArticles,
+      secFilings,
+      newsArticles,
+    };
+  }, [articles, ticker]);
+
+  const { selectedArticles, secFilings, newsArticles } = feedStats;
+  const showDebugCounts = process.env.NODE_ENV === 'development';
 
   return (
     <div className="card" style={{ gridColumn: 'span 2' }}>
@@ -138,6 +158,14 @@ export default function IngestionFeed({ articles = [], ticker, loading, error, o
         Live ingestion feed · <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{ticker}</span>
         <span style={{ fontSize: 10 }}>{loading ? 'loading' : `${newsArticles.length} latest`}</span>
       </div>
+      <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.45, margin: '-2px 0 10px' }}>
+        Showing news articles only. SEC filings are processed separately for signals.
+      </div>
+      {showDebugCounts && (
+        <div style={{ fontSize: 10, color: 'var(--text-hint)', fontFamily: 'var(--font-mono)', margin: '-4px 0 10px' }}>
+          total {articles.length} · selected {selectedArticles.length} · news {newsArticles.length} · sec filtered {secFilings.length}
+        </div>
+      )}
       {error && (
         <div style={{ fontSize: 11, color: 'var(--red-text)', padding: '0 0 8px' }}>
           News service unavailable: {error.message}
@@ -169,7 +197,7 @@ export default function IngestionFeed({ articles = [], ticker, loading, error, o
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7, minWidth: 0 }}>
                 <button
                   type="button"
-                  onClick={() => onTickerClick?.(a.ticker)}
+                  onClick={() => onTickerClick?.(a.ticker || articleTickers(a)[0])}
                   style={{
                     fontFamily: 'var(--font-mono)',
                     fontWeight: 600,
@@ -183,7 +211,7 @@ export default function IngestionFeed({ articles = [], ticker, loading, error, o
                     flexShrink: 0,
                   }}
                 >
-                  {a.ticker}
+                  {a.ticker || articleTickers(a)[0] || ticker}
                 </button>
                 <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, fontFamily: 'var(--font-mono)', background: ss.bg, color: ss.color, flexShrink: 0 }}>{sourceLabel(a.source)}</span>
                 <span style={{ fontSize: 10, color: 'var(--text-hint)', fontFamily: 'var(--font-mono)', marginLeft: 'auto', flexShrink: 0 }}>{formatTime(a.published_at || a.ingested_at)}</span>

@@ -18,10 +18,26 @@ function filingType(article) {
   return match ? match[1].toUpperCase() : 'SEC filing';
 }
 
+function isSecFiling(article = {}) {
+  if (article.content_type === 'sec_filing') return true;
+  if (article.is_filing || article.filing_type) return true;
+
+  const source = String(article.source || '').toLowerCase();
+  const title = String(article.title || '').toLowerCase();
+  return (
+    source.includes('edgar') ||
+    source.includes('sec') ||
+    /\bsec\b/.test(title) ||
+    /\b8-k\b/.test(title) ||
+    /\b10-k\b/.test(title) ||
+    /\b10-q\b/.test(title)
+  );
+}
+
 export default function FilingsFeed({ articles = [], loading, error }) {
   const filings = useMemo(
     () => articles
-      .filter(article => article.content_type === 'sec_filing')
+      .filter(isSecFiling)
       .sort((a, b) => new Date(b.published_at || b.ingested_at) - new Date(a.published_at || a.ingested_at)),
     [articles],
   );
