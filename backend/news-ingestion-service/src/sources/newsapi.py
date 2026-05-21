@@ -23,14 +23,16 @@ async def fetch_newsapi(ticker: str) -> list[Article]:
     Fetch latest articles for any ticker from NewsAPI.
     Uses company name if known, falls back to ticker symbol.
     """
+    ticker = ticker.upper()
     api_key = os.getenv("NEWSAPI_KEY", "")
     if not api_key:
-        print("[NewsAPI] No API key set — skipping")
+        print(f"[NewsAPI] {ticker}: disabled missing NEWSAPI_KEY fetched=0 saved=0")
         return []
 
-    company = COMPANY_NAMES.get(ticker.upper(), ticker.upper())
-    query = f"{company} OR {ticker.upper()} stock"
-    articles = []
+    company = COMPANY_NAMES.get(ticker, ticker)
+    query = f"{company} OR {ticker} stock"
+    articles: list[Article] = []
+    fetched_count = 0
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -41,13 +43,16 @@ async def fetch_newsapi(ticker: str) -> list[Article]:
                 "pageSize": 10,
                 "apiKey": api_key,
             })
+            response.raise_for_status()
             data = response.json()
 
         if data.get("status") != "ok":
-            print(f"[NewsAPI] Error response for {ticker}: {data.get('message')}")
+            print(f"[NewsAPI] {ticker}: fetched=0 saved=0 error={data.get('message')}")
             return []
 
-        for item in data.get("articles", []):
+        items = data.get("articles", [])
+        fetched_count = len(items)
+        for item in items:
             url = item.get("url", "")
             if not url:
                 continue
@@ -66,7 +71,8 @@ async def fetch_newsapi(ticker: str) -> list[Article]:
 
             article = Article(
                 id=article_id,
-                ticker=ticker.upper(),
+                ticker=ticker,
+                tickers=[ticker],
                 source="newsapi",
                 content_type="news",
                 title=item.get("title", "").strip(),
@@ -80,6 +86,8 @@ async def fetch_newsapi(ticker: str) -> list[Article]:
             articles.append(article)
 
     except Exception as e:
-        print(f"[NewsAPI] Error fetching {ticker}: {e}")
+        print(f"[NewsAPI] {ticker}: fetched={fetched_count} saved={len(articles)} error={e}")
+        return articles
 
+    print(f"[NewsAPI] {ticker}: fetched={fetched_count} saved={len(articles)}")
     return articles

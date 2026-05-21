@@ -1,7 +1,7 @@
 import { request } from './client';
 
-export function fetchTickerHistory(ticker, { limit = 50 } = {}) {
-  return request('results', `/results/${ticker}`, { params: { limit } });
+export function fetchTickerHistory(ticker, { limit = 50, contentType } = {}) {
+  return request('results', `/results/${ticker}`, { params: { limit, content_type: contentType } });
 }
 
 export function fetchSignalAccuracy({ ticker } = {}) {

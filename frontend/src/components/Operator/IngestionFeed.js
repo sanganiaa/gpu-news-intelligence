@@ -4,6 +4,8 @@ const srcStyle = {
   yahoo:   { bg: '#E6F1FB', color: '#0C447C' },
   newsapi: { bg: '#EEEDFE', color: '#3C3489' },
   edgar:   { bg: '#FAEEDA', color: '#633806' },
+  reddit:  { bg: '#FDE9DD', color: '#8A3107' },
+  fred:    { bg: '#E6F5EA', color: '#27500A' },
 };
 
 const sentStyle = {
@@ -16,6 +18,8 @@ function sourceClass(source = '') {
   const s = source.toLowerCase();
   if (s.includes('edgar')) return 'edgar';
   if (s.includes('newsapi')) return 'newsapi';
+  if (s.includes('reddit')) return 'reddit';
+  if (s.includes('fred')) return 'fred';
   return 'yahoo';
 }
 
@@ -24,6 +28,8 @@ function sourceLabel(source = '') {
   if (s.includes('edgar')) return 'EDGAR';
   if (s.includes('newsapi')) return 'NewsAPI';
   if (s.includes('yahoo')) return 'Yahoo';
+  if (s.includes('reddit')) return 'Reddit';
+  if (s.includes('fred')) return 'FRED';
   return source || 'source';
 }
 
@@ -104,10 +110,6 @@ function isSecFiling(article = {}) {
   );
 }
 
-function isReadableNews(article = {}) {
-  return !isSecFiling(article);
-}
-
 function articleTickers(article = {}) {
   if (Array.isArray(article.tickers)) return article.tickers.map(t => String(t).toUpperCase());
   if (article.ticker) return [String(article.ticker).toUpperCase()];
@@ -117,6 +119,11 @@ function articleTickers(article = {}) {
 function matchesTicker(article, ticker) {
   if (!ticker) return true;
   return articleTickers(article).includes(String(ticker).toUpperCase());
+}
+
+function isNewsArticle(article = {}) {
+  if (article.content_type) return article.content_type === 'news';
+  return !isSecFiling(article);
 }
 
 function SentimentBar({ article }) {
@@ -139,9 +146,11 @@ function SentimentBar({ article }) {
 
 export default function IngestionFeed({ articles = [], ticker, loading, error, onTickerClick }) {
   const feedStats = useMemo(() => {
-    const selectedArticles = articles.filter(article => matchesTicker(article, ticker));
+    const selectedArticles = articles
+      .filter(article => matchesTicker(article, ticker))
+      .sort((a, b) => new Date(b.published_at || b.ingested_at) - new Date(a.published_at || a.ingested_at));
     const secFilings = selectedArticles.filter(isSecFiling);
-    const newsArticles = selectedArticles.filter(isReadableNews);
+    const newsArticles = selectedArticles.filter(isNewsArticle);
     return {
       selectedArticles,
       secFilings,
@@ -156,14 +165,11 @@ export default function IngestionFeed({ articles = [], ticker, loading, error, o
     <div className="card" style={{ gridColumn: 'span 2' }}>
       <div className="card-title">
         Live ingestion feed · <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{ticker}</span>
-        <span style={{ fontSize: 10 }}>{loading ? 'loading' : `${newsArticles.length} latest`}</span>
-      </div>
-      <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.45, margin: '-2px 0 10px' }}>
-        Showing news articles only. SEC filings are processed separately for signals.
+        <span style={{ fontSize: 10 }}>{loading ? 'loading' : `${newsArticles.length} news`}</span>
       </div>
       {showDebugCounts && (
         <div style={{ fontSize: 10, color: 'var(--text-hint)', fontFamily: 'var(--font-mono)', margin: '-4px 0 10px' }}>
-          total {articles.length} · selected {selectedArticles.length} · news {newsArticles.length} · sec filtered {secFilings.length}
+          total {articles.length} · selected {selectedArticles.length} · news {newsArticles.length} · sec {secFilings.length}
         </div>
       )}
       {error && (
@@ -173,7 +179,7 @@ export default function IngestionFeed({ articles = [], ticker, loading, error, o
       )}
       {!loading && newsArticles.length === 0 ? (
         <div style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '8px 0' }}>
-          No news articles available for {ticker}.
+          No news articles available for {ticker}. Signals may still be using filings, macro items, or cached results.
         </div>
       ) : (
         newsArticles.map(a => {

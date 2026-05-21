@@ -36,8 +36,15 @@ function isSecFiling(article = {}) {
 
 export default function FilingsFeed({ articles = [], loading, error }) {
   const filings = useMemo(
-    () => articles
-      .filter(isSecFiling)
+    () => Array.from(
+      articles
+        .filter(isSecFiling)
+        .reduce((byId, article) => {
+          if (article.id && !byId.has(article.id)) byId.set(article.id, article);
+          return byId;
+        }, new Map())
+        .values(),
+    )
       .sort((a, b) => new Date(b.published_at || b.ingested_at) - new Date(a.published_at || a.ingested_at)),
     [articles],
   );

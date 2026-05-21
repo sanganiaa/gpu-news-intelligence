@@ -44,6 +44,31 @@ function formatNumber(value) {
   return Number(value || 0).toLocaleString();
 }
 
+function sourceCounts(sourceStatus = {}) {
+  return sourceStatus.sources || sourceStatus;
+}
+
+function contentTypeCounts(sourceStatus = {}) {
+  if (sourceStatus.content_types) return sourceStatus.content_types;
+  const sources = sourceCounts(sourceStatus);
+  return {
+    news: Number(sources.yahoo_rss || 0) + Number(sources.newsapi || 0),
+    sec_filing: Number(sources.sec_edgar || 0),
+    reddit: Number(sources.reddit || 0),
+    macro: Number(sources.fred || 0),
+  };
+}
+
+function cacheItemCount(sourceStatus = {}, tickers = {}, fallback = 0) {
+  if (Number.isFinite(Number(sourceStatus.unique_cached_items))) {
+    return Number(sourceStatus.unique_cached_items);
+  }
+  const sourceTotal = Object.values(sourceCounts(sourceStatus)).reduce((sum, n) => sum + Number(n || 0), 0);
+  if (sourceTotal) return sourceTotal;
+  const tickerTotal = Object.values(tickers || {}).reduce((sum, n) => sum + Number(n || 0), 0);
+  return tickerTotal || fallback;
+}
+
 function newestTimestamp(...values) {
   const timestamps = values
     .filter(Boolean)
@@ -155,8 +180,16 @@ export default function Dashboard() {
 
   const supportingById = useMemo(() => {
     const map = new Map();
+    inference.processedArticles.forEach(article => {
+      map.set(article.id, {
+        summary_ai: article.summary_ai,
+        investment_implication: article.investment_implication,
+        catalyst_tag: article.catalyst_tag,
+      });
+    });
     (selectedSignal?.supporting_articles || []).forEach(article => {
       map.set(article.article_id, {
+        ...(map.get(article.article_id) || {}),
         sentiment: article.positive >= article.negative && article.positive >= article.neutral ? 'positive' : article.negative >= article.neutral ? 'negative' : 'neutral',
         confidence: Math.max(article.positive, article.negative, article.neutral),
         positive: article.positive,
@@ -166,6 +199,7 @@ export default function Dashboard() {
     });
     inference.sentiments.forEach(result => {
       map.set(result.id, {
+        ...(map.get(result.id) || {}),
         sentiment: result.sentiment,
         confidence: result.confidence,
         positive: result.probabilities?.positive,
@@ -175,7 +209,7 @@ export default function Dashboard() {
       });
     });
     return map;
-  }, [selectedSignal, inference.sentiments]);
+  }, [selectedSignal, inference.processedArticles, inference.sentiments]);
 
   const enrichedArticles = useMemo(() => {
     const raw = news.articles.length ? news.articles : (resultsState.history?.articles || []);
@@ -185,6 +219,9 @@ export default function Dashboard() {
         ...article,
         sentiment: support?.sentiment,
         sentiment_confidence: support?.confidence,
+        summary_ai: support?.summary_ai ?? article.summary_ai,
+        investment_implication: support?.investment_implication ?? article.investment_implication,
+        catalyst_tag: support?.catalyst_tag ?? article.catalyst_tag,
         positive: support?.positive ?? article.positive,
         negative: support?.negative ?? article.negative,
         neutral: support?.neutral ?? article.neutral,
@@ -206,7 +243,8 @@ export default function Dashboard() {
     return total / signals.signals.length;
   }, [signals.signals]);
 
-  const articleTotal = Object.values(news.tickers || {}).reduce((sum, n) => sum + Number(n || 0), 0);
+  const articleBreakdown = contentTypeCounts(news.sourceStatus);
+  const articleTotal = cacheItemCount(news.sourceStatus, news.tickers, displayedArticles.length);
   const healthyCount = serviceState.services.filter(s => s.status.startsWith('running')).length;
   const inferenceHealth = inference.health;
   const lastUpdatedAt = newestTimestamp(
@@ -220,8 +258,9 @@ export default function Dashboard() {
 
   const kpis = {
     articleCount: {
+      label: 'Current article cache',
       value: news.loading ? '...' : formatNumber(articleTotal || displayedArticles.length),
-      sub: `${Object.keys(news.tickers || {}).length} tickers tracked`,
+      sub: `news ${formatNumber(articleBreakdown.news)} · SEC ${formatNumber(articleBreakdown.sec_filing)} · reddit ${formatNumber(articleBreakdown.reddit)} · macro ${formatNumber(articleBreakdown.macro)}`,
     },
     signalCount: {
       value: signals.loading ? '...' : formatNumber(resultsState.accuracy?.total_signals || signals.signals.length),
@@ -274,9 +313,11 @@ export default function Dashboard() {
       });
     });
     if (news.sourceStatus) {
-      const total = Object.values(news.sourceStatus).reduce((sum, n) => sum + Number(n || 0), 0);
-      const active = Object.values(news.sourceStatus).filter(n => Number(n) > 0).length;
-      const sourceCount = Object.keys(news.sourceStatus).length || 1;
+      const sources = sourceCounts(news.sourceStatus);
+      const total = Object.values(sources).reduce((sum, n) => sum + Number(n || 0), 0);
+      const sourceEntries = Object.entries(sources).filter(([key]) => key !== 'other');
+      const active = sourceEntries.filter(([, n]) => Number(n) > 0).length;
+      const sourceCount = sourceEntries.length || Object.keys(sources).length || 1;
       rows.push({
         label: 'Source diversity',
         value: active ? Math.round((active / sourceCount) * 100) : 0,
@@ -385,6 +426,7 @@ export default function Dashboard() {
           tickerArticles={news.articles}
           tickers={news.tickers}
           signals={signals.signals}
+          sourceStatus={news.sourceStatus}
           loading={news.loading || signals.loading}
           error={news.error}
         />

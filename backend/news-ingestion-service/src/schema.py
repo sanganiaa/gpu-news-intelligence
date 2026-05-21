@@ -13,6 +13,7 @@ class Article(BaseModel):
     """
     id: str                              # SHA256 hash of URL — used for dedup
     ticker: str                          # e.g. "NVDA"
+    tickers: list[str] | None = None     # all tickers this item should be associated with
     source: str                          # "yahoo_rss" | "newsapi" | "sec_edgar"
     content_type: ContentType = "news"   # "news" | "sec_filing" | "reddit" | "macro"
     title: str

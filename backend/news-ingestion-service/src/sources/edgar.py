@@ -72,6 +72,7 @@ async def fetch_edgar_8k(ticker: str) -> list[Article]:
 
     cik_stripped = cik.lstrip("0")
     articles = []
+    fetched_count = 0
 
     try:
         async with httpx.AsyncClient(timeout=15, headers=HEADERS) as client:
@@ -83,6 +84,7 @@ async def fetch_edgar_8k(ticker: str) -> list[Article]:
         accession_numbers = filings.get("accessionNumber", [])
         filing_dates     = filings.get("filingDate", [])
         primary_docs     = filings.get("primaryDocument", [])
+        fetched_count = sum(1 for form in forms if form == "8-K")
 
         for i, form in enumerate(forms):
             if form != "8-K":
@@ -109,6 +111,7 @@ async def fetch_edgar_8k(ticker: str) -> list[Article]:
             article = Article(
                 id=article_id,
                 ticker=ticker.upper(),
+                tickers=[ticker.upper()],
                 source="sec_edgar",
                 content_type="sec_filing",
                 title=f"{ticker.upper()} 8-K Filing — {filing_date_str}",
@@ -126,6 +129,8 @@ async def fetch_edgar_8k(ticker: str) -> list[Article]:
                 break
 
     except Exception as e:
-        print(f"[EDGAR] Error fetching filings for {ticker}: {e}")
+        print(f"[EDGAR] {ticker.upper()}: fetched={fetched_count} saved={len(articles)} error={e}")
+        return articles
 
+    print(f"[EDGAR] {ticker.upper()}: fetched={fetched_count} saved={len(articles)}")
     return articles

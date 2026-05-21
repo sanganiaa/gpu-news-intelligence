@@ -13,7 +13,7 @@ function KPI({ label, value, sub }) {
 export default function KPIRow({ articleCount, signalCount, gpuUtil }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
-      <KPI label="Articles ingested" value={articleCount.value} sub={articleCount.sub} />
+      <KPI label={articleCount.label || 'Current article cache'} value={articleCount.value} sub={articleCount.sub} />
       <KPI label="Inference throughput" value={gpuUtil.value} sub={gpuUtil.sub} />
       <KPI label="Signals generated" value={signalCount.value} sub={signalCount.sub} />
       <KPI label="Signal accuracy" value={signalCount.accuracy} sub={signalCount.accuracySub} />

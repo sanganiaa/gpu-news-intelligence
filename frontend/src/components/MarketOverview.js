@@ -55,13 +55,29 @@ function sentimentColor(value) {
   return { bg: 'var(--surface-2)', color: 'var(--text-secondary)', border: 'var(--border)' };
 }
 
+function signalScore(signal) {
+  const score = Number(signal?.net_sentiment ?? signal?.sentiment_score);
+  if (Number.isFinite(score)) return score;
+
+  const verdict = String(signal?.verdict || signal?.signal || '').toUpperCase();
+  const confidence = Math.max(0, Math.min(Number(signal?.confidence || 0), 1));
+  if (verdict === 'BUY') return confidence || 0.25;
+  if (verdict === 'SELL') return -(confidence || 0.25);
+  if (verdict === 'HOLD') return 0;
+  return null;
+}
+
 function fearLabel(score) {
   if (score >= 70) return 'Elevated';
   if (score >= 45) return 'Watch';
   return 'Calm';
 }
 
-export default function MarketOverview({ latestArticles = [], tickerArticles = [], tickers = {}, signals = [], loading, error }) {
+function sourceCounts(sourceStatus = {}) {
+  return sourceStatus.sources || sourceStatus;
+}
+
+export default function MarketOverview({ latestArticles = [], tickerArticles = [], tickers = {}, signals = [], sourceStatus = {}, loading, error }) {
   const rawArticles = useMemo(
     () => uniqueArticles([...(latestArticles || []), ...(tickerArticles || [])]),
     [latestArticles, tickerArticles],
@@ -127,6 +143,7 @@ export default function MarketOverview({ latestArticles = [], tickerArticles = [
   const sectors = useMemo(() => {
     const signalByTicker = new Map(signals.map(signal => [signal.ticker, signal]));
     const availableTickers = new Set([
+      ...Object.keys(WATCHLIST_SECTORS),
       ...Object.keys(tickers || {}),
       ...signals.map(signal => signal.ticker),
     ]);
@@ -138,8 +155,13 @@ export default function MarketOverview({ latestArticles = [], tickerArticles = [
       if (!signal && !(ticker in WATCHLIST_SECTORS)) return;
       if (!groups.has(sector)) groups.set(sector, { sector, tickers: [], total: 0, scored: 0 });
       const group = groups.get(sector);
-      const score = Number(signal?.net_sentiment);
-      group.tickers.push({ ticker, score: Number.isFinite(score) ? score : null });
+      const score = signalScore(signal);
+      group.tickers.push({
+        ticker,
+        score,
+        verdict: signal?.verdict || signal?.signal,
+        confidence: signal?.confidence,
+      });
       if (Number.isFinite(score)) {
         group.total += score;
         group.scored += 1;
@@ -153,6 +175,27 @@ export default function MarketOverview({ latestArticles = [], tickerArticles = [
       }))
       .sort((a, b) => b.scored - a.scored || a.sector.localeCompare(b.sector));
   }, [signals, tickers]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    console.debug('[MarketOverview]', {
+      rawArticleCount: rawArticles.length,
+      macroCount: macroIndicators.length,
+      riskCount: riskArticles.length,
+      signals: signals.map(signal => ({
+        ticker: signal.ticker,
+        verdict: signal.verdict || signal.signal,
+        net_sentiment: signal.net_sentiment ?? signal.sentiment_score,
+        confidence: signal.confidence,
+      })),
+      sectors: sectors.map(group => ({
+        sector: group.sector,
+        scored: group.scored,
+        total: group.tickers.length,
+      })),
+      sourceStatus,
+    });
+  }, [macroIndicators.length, rawArticles.length, riskArticles.length, sectors, signals, sourceStatus]);
 
   const fear = useMemo(() => {
     const negatives = signals.flatMap(signal => (
@@ -187,7 +230,11 @@ export default function MarketOverview({ latestArticles = [], tickerArticles = [
           </div>
           {macroIndicators.length === 0 ? (
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '8px 0' }}>
-              No FRED observations available from the news service.
+              {loading
+                ? 'Waiting for macro observations from the news service.'
+                : Number(sourceCounts(sourceStatus).fred || 0) === 0
+                  ? 'No FRED observations yet. Set FRED_API_KEY and run an ingestion cycle to populate CPI, unemployment, and fed funds data.'
+                  : 'No macro observations are present in the current source window.'}
             </div>
           ) : macroIndicators.map(article => (
             <div key={article.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, padding: '7px 0', borderBottom: '0.5px solid var(--border)' }}>
@@ -229,7 +276,9 @@ export default function MarketOverview({ latestArticles = [], tickerArticles = [
           </div>
           {riskArticles.length === 0 ? (
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '8px 0' }}>
-              No regulation or macro catalyst articles found.
+              {preprocessState.loading
+                ? 'Scanning current source items for regulation and macro catalysts.'
+                : 'No regulation or macro catalyst items found in the current source set.'}
             </div>
           ) : riskArticles.map(article => (
             <div key={article.id} style={{ padding: '7px 0', borderBottom: '0.5px solid var(--border)' }}>
@@ -254,7 +303,11 @@ export default function MarketOverview({ latestArticles = [], tickerArticles = [
           <span style={{ fontSize: 10 }}>{sectors.length} sectors</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
-          {sectors.map(group => {
+          {sectors.length === 0 ? (
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '8px 0' }}>
+              No ticker signals available yet. Generate or refresh a signal to populate sector sentiment.
+            </div>
+          ) : sectors.map(group => {
             const colors = sentimentColor(group.average);
             return (
               <div key={group.sector} style={{ border: `1px solid ${colors.border}`, background: colors.bg, color: colors.color, borderRadius: 8, padding: 10, minHeight: 92 }}>
@@ -264,7 +317,18 @@ export default function MarketOverview({ latestArticles = [], tickerArticles = [
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                   {group.tickers.slice(0, 10).map(item => (
-                    <span key={item.ticker} className="mono" style={{ fontSize: 10, padding: '2px 5px', borderRadius: 4, background: 'rgba(255,255,255,0.55)' }}>
+                    <span
+                      key={item.ticker}
+                      className="mono"
+                      title={item.verdict ? `${item.ticker} ${item.verdict} ${Math.round(Number(item.confidence || 0) * 100)}%` : `${item.ticker} no signal`}
+                      style={{
+                        fontSize: 10,
+                        padding: '2px 5px',
+                        borderRadius: 4,
+                        background: Number.isFinite(item.score) ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.35)',
+                        opacity: Number.isFinite(item.score) ? 1 : 0.55,
+                      }}
+                    >
                       {item.ticker}
                     </span>
                   ))}

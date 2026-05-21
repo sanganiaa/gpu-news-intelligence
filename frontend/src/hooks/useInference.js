@@ -8,6 +8,7 @@ export function useInference(articles = []) {
   const articlesRef = useRef(articles);
   const [state, setState] = useState({
     health: null,
+    processedArticles: [],
     sentiments: [],
     batch: null,
     loading: true,
@@ -78,7 +79,7 @@ export function useInference(articles = []) {
     const currentArticles = articlesRef.current;
 
     if (!currentArticles.length) {
-      setState(prev => ({ ...prev, sentiments: [], batch: null, sentimentLoading: false, sentimentError: null }));
+      setState(prev => ({ ...prev, processedArticles: [], sentiments: [], batch: null, sentimentLoading: false, sentimentError: null }));
       return () => {
         cancelled = true;
       };
@@ -93,11 +94,12 @@ export function useInference(articles = []) {
         content_type: article.content_type || 'news',
         title: article.title,
         text: article.clean_text,
-      }))))
-      .then(batch => {
+      }))).then(batch => ({ batch, processed })))
+      .then(({ batch, processed }) => {
         if (!cancelled) {
           setState(prev => ({
             ...prev,
+            processedArticles: processed || [],
             sentiments: batch.results || [],
             batch,
             sentimentLoading: false,
@@ -110,6 +112,7 @@ export function useInference(articles = []) {
         if (!cancelled) {
           setState(prev => ({
             ...prev,
+            processedArticles: [],
             sentiments: [],
             batch: null,
             sentimentLoading: false,

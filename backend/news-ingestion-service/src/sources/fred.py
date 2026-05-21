@@ -41,10 +41,11 @@ async def fetch_fred_indicators() -> list[Article]:
     """
     api_key = os.getenv("FRED_API_KEY", "")
     if not api_key:
-        print("[FRED] No API key set — skipping")
+        print("[FRED] MACRO: disabled missing FRED_API_KEY fetched=0 saved=0")
         return []
 
     articles: list[Article] = []
+    fetched_count = 0
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -59,9 +60,11 @@ async def fetch_fred_indicators() -> list[Article]:
                         "limit": 1,
                     },
                 )
+                response.raise_for_status()
                 data = response.json()
 
                 observations = data.get("observations", [])
+                fetched_count += len(observations)
                 if not observations:
                     continue
 
@@ -83,6 +86,7 @@ async def fetch_fred_indicators() -> list[Article]:
                 article = Article(
                     id=article_id,
                     ticker="MACRO",
+                    tickers=["MACRO"],
                     source="fred",
                     content_type="macro",
                     title=title,
@@ -96,6 +100,8 @@ async def fetch_fred_indicators() -> list[Article]:
                 articles.append(article)
 
     except Exception as e:
-        print(f"[FRED] Error fetching indicators: {e}")
+        print(f"[FRED] MACRO: fetched={fetched_count} saved={len(articles)} error={e}")
+        return articles
 
+    print(f"[FRED] MACRO: fetched={fetched_count} saved={len(articles)}")
     return articles

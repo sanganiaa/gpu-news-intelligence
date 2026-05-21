@@ -42,6 +42,19 @@ def _all_articles() -> list[Article]:
     return [a for articles in _store.values() for a in articles]
 
 
+def _article_identity(article: Article) -> str:
+    return article.id or article.url
+
+
+def _unique_articles(articles: list[Article]) -> list[Article]:
+    by_identity: dict[str, Article] = {}
+    for article in articles:
+        identity = _article_identity(article)
+        if identity and identity not in by_identity:
+            by_identity[identity] = article
+    return list(by_identity.values())
+
+
 def _infer_content_type(article: Article) -> ContentType:
     source = (article.source or "").lower()
     title = (article.title or "").lower()
@@ -69,6 +82,21 @@ def _infer_content_type(article: Article) -> ContentType:
     return "news"
 
 
+def _source_bucket(article: Article) -> str:
+    source = (article.source or "").lower()
+    if "yahoo" in source:
+        return "yahoo_rss"
+    if "newsapi" in source or "news api" in source:
+        return "newsapi"
+    if "edgar" in source or source == "sec" or _infer_content_type(article) == "sec_filing":
+        return "sec_edgar"
+    if source == "fred":
+        return "fred"
+    if source == "reddit":
+        return "reddit"
+    return "other"
+
+
 def _article_payload(article: Article) -> dict:
     payload = article.model_dump()
     content_type = _infer_content_type(article)
@@ -80,7 +108,7 @@ def _article_payload(article: Article) -> dict:
     )
     if payload["is_filing"] and not payload.get("filing_type"):
         payload["filing_type"] = "SEC filing"
-    payload["tickers"] = [article.ticker]
+    payload["tickers"] = article.tickers or [article.ticker]
     return payload
 
 
@@ -99,6 +127,9 @@ def store_articles(articles: list[Article]):
         ticker = article.ticker
         if ticker not in _store:
             _store[ticker] = []
+        existing_ids = {_article_identity(a) for a in _store[ticker]}
+        if _article_identity(article) in existing_ids:
+            continue
         _store[ticker].append(article)
 
 
@@ -110,6 +141,8 @@ async def ingest_ticker(ticker: str) -> list[Article]:
     ticker = ticker.upper()
     new_articles = []
 
+    before_count = len(_store.get(ticker, []))
+
     yahoo   = await fetch_yahoo_rss(ticker)
     newsapi = await fetch_newsapi(ticker)
     edgar   = await fetch_edgar_8k(ticker)
@@ -119,10 +152,12 @@ async def ingest_ticker(ticker: str) -> list[Article]:
     new_articles.extend(edgar)
 
     store_articles(new_articles)
+    after_count = len(_store.get(ticker, []))
 
     print(
         f"[{ticker}] Ingested {len(new_articles)} new articles "
-        f"(Yahoo: {len(yahoo)}, NewsAPI: {len(newsapi)}, EDGAR: {len(edgar)})"
+        f"(Yahoo: {len(yahoo)}, NewsAPI: {len(newsapi)}, EDGAR: {len(edgar)}); "
+        f"cached_before={before_count} cached_after={after_count}"
     )
     return new_articles
 
@@ -161,11 +196,15 @@ async def startup():
 
 @app.get("/health")
 def health():
+    all_articles = _all_articles()
+    unique_articles = _unique_articles(all_articles)
     return {
         "status": "ok",
         "service": "news-ingestion-service",
         "tickers_tracked": list(_store.keys()),
-        "total_articles": sum(len(v) for v in _store.values()),
+        "total_articles": len(all_articles),
+        "unique_articles": len(unique_articles),
+        "duplicate_mappings": len(all_articles) - len(unique_articles),
         "dedup_seen": seen_count(),
         "poll_interval_seconds": POLL_INTERVAL,
     }
@@ -208,19 +247,37 @@ def list_tickers():
 
 @app.get("/news/sources/status")
 def source_status():
-    """Article count broken down by source across all tickers."""
-    counts: dict[str, int] = {
+    """Current in-memory cache count, deduplicated and grouped by source/content type."""
+    all_articles = _all_articles()
+    unique_articles = _unique_articles(all_articles)
+
+    source_counts: dict[str, int] = {
         "yahoo_rss": 0,
         "newsapi": 0,
         "sec_edgar": 0,
         "fred": 0,
         "reddit": 0,
+        "other": 0,
     }
-    for articles in _store.values():
-        for a in articles:
-            if a.source in counts:
-                counts[a.source] += 1
-    return counts
+    content_type_counts: dict[str, int] = {
+        "news": 0,
+        "sec_filing": 0,
+        "reddit": 0,
+        "macro": 0,
+    }
+
+    for article in unique_articles:
+        source_counts[_source_bucket(article)] += 1
+        content_type = _infer_content_type(article)
+        content_type_counts[content_type] = content_type_counts.get(content_type, 0) + 1
+
+    return {
+        "total_cached_items": len(all_articles),
+        "unique_cached_items": len(unique_articles),
+        "duplicate_mappings": len(all_articles) - len(unique_articles),
+        "sources": source_counts,
+        "content_types": content_type_counts,
+    }
 
 
 @app.get("/news/{ticker}")

@@ -20,6 +20,7 @@ services:
       - "5001:5001"
     environment:
       - PYTHONUNBUFFERED=1
+      - FRED_API_KEY=${FRED_API_KEY:-}
 
   preprocessing-service:
     build: ./backend/preprocessing-service
@@ -34,7 +35,7 @@ services:
       - "5003:5003"
     environment:
       - PYTHONUNBUFFERED=1
-      - DEVICE=mps   # swap to "cuda" on cloud GPU instance
+      - DEVICE=${DEVICE:-cpu}
     # Uncomment on NVIDIA cloud instance:
     # deploy:
     #   resources:
@@ -48,8 +49,18 @@ services:
     build: ./backend/signal-generation-service
     ports:
       - "5004:5004"
+    depends_on:
+      - news-ingestion-service
+      - preprocessing-service
+      - inference-engine
+      - results-db-service
     environment:
       - PYTHONUNBUFFERED=1
+      - NEWS_URL=http://news-ingestion-service:5001
+      - PREPROCESSING_URL=http://preprocessing-service:5002
+      - INFERENCE_URL=http://inference-engine:5003
+      - RESULTS_DB_URL=http://results-db-service:5005
+      - SIGNAL_INGEST_INTERVAL_SECONDS=${SIGNAL_INGEST_INTERVAL_SECONDS:-3600}
 
   results-db-service:
     build: ./backend/results-db-service
@@ -57,10 +68,16 @@ services:
       - "5005:5005"
     environment:
       - PYTHONUNBUFFERED=1
+      - DATABASE_URL=sqlite:////data/results.db
+    volumes:
+      - results-db:/data
 
   frontend:
     build: ./frontend
     ports:
-      - "3000:3000"
+      - "3000:80"
     depends_on:
       - api-gateway
+
+volumes:
+  results-db:

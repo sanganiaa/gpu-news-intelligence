@@ -23,6 +23,7 @@ def _created_utc_to_datetime(value) -> datetime:
 async def fetch_reddit_top_posts(limit_per_subreddit: int = 10) -> list[Article]:
     """Fetch top posts from finance subreddits via Reddit's public JSON API."""
     articles: list[Article] = []
+    fetched_count = 0
 
     try:
         async with httpx.AsyncClient(timeout=10, headers=HEADERS) as client:
@@ -36,9 +37,11 @@ async def fetch_reddit_top_posts(limit_per_subreddit: int = 10) -> list[Article]
                     },
                     follow_redirects=True,
                 )
+                response.raise_for_status()
                 data = response.json()
 
                 children = data.get("data", {}).get("children", [])
+                fetched_count += len(children)
                 for child in children:
                     post = child.get("data", {})
                     if post.get("stickied"):
@@ -61,6 +64,7 @@ async def fetch_reddit_top_posts(limit_per_subreddit: int = 10) -> list[Article]
                     article = Article(
                         id=article_id,
                         ticker="REDDIT",
+                        tickers=["REDDIT"],
                         source="reddit",
                         content_type="reddit",
                         title=title,
@@ -74,6 +78,8 @@ async def fetch_reddit_top_posts(limit_per_subreddit: int = 10) -> list[Article]
                     articles.append(article)
 
     except Exception as e:
-        print(f"[Reddit] Error fetching top posts: {e}")
+        print(f"[Reddit] REDDIT: fetched={fetched_count} saved={len(articles)} error={e}")
+        return articles
 
+    print(f"[Reddit] REDDIT: fetched={fetched_count} saved={len(articles)}")
     return articles
