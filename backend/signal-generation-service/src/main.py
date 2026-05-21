@@ -4,7 +4,7 @@ import math
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 INFERENCE_URL = os.getenv("INFERENCE_URL", "http://localhost:5003")
+PREPROCESSING_URL = os.getenv("PREPROCESSING_URL", "http://localhost:5002")
 NEWS_URL = os.getenv("NEWS_URL", "http://localhost:5001")
 RESULTS_DB_URL = os.getenv("RESULTS_DB_URL", "http://localhost:5005")
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.65"))
@@ -23,7 +24,9 @@ SIGNAL_INGEST_INTERVAL_SECONDS = int(os.getenv("SIGNAL_INGEST_INTERVAL_SECONDS",
 
 DEFAULT_TICKERS = [
     "NVDA", "AAPL", "MSFT", "META", "TSLA",
-    "AMZN", "AMD", "SNOW", "NBIS", "PLTR", "ARM", "SMCI",
+    "AMZN", "AMD", "SNOW", "PLTR", "SMCI",
+    "INTC", "QCOM", "ARM", "AVGO", "TSM",
+    "ASML", "ORCL", "CRM", "ADBE", "NOW",
 ]
 
 logging.basicConfig(level=logging.INFO)
@@ -40,9 +43,12 @@ app.add_middleware(
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
 
+ContentType = Literal["news", "sec_filing", "reddit", "macro"]
+
 class ArticleSentiment(BaseModel):
     article_id: str
     ticker: str
+    content_type: ContentType = "news"
     title: str
     published_at: datetime
     positive: float
@@ -64,6 +70,7 @@ class Signal(BaseModel):
 
 class GenerateRequest(BaseModel):
     ticker: str
+    content_type: ContentType = "news"
     title: str
     text: str
     published_at: Optional[datetime] = None
@@ -162,12 +169,23 @@ def _parse_sentiment(payload: dict) -> tuple[float, float, float]:
 
 
 async def _infer_single(
-    article_id: str, ticker: str, title: str, text: str, client: httpx.AsyncClient
+    article_id: str,
+    ticker: str,
+    title: str,
+    text: str,
+    client: httpx.AsyncClient,
+    content_type: ContentType = "news",
 ) -> Optional[dict]:
     try:
         resp = await client.post(
             f"{INFERENCE_URL}/inference/sentiment",
-            json={"id": article_id, "ticker": ticker, "title": title, "text": text},
+            json={
+                "id": article_id,
+                "ticker": ticker,
+                "content_type": content_type,
+                "title": title,
+                "text": text,
+            },
             timeout=10.0,
         )
         resp.raise_for_status()
@@ -211,6 +229,23 @@ async def _fetch_articles(ticker: str, client: httpx.AsyncClient) -> list[dict]:
         return []
 
 
+async def _preprocess_articles(articles: list[dict], client: httpx.AsyncClient) -> list[dict]:
+    if not articles:
+        return []
+    try:
+        resp = await client.post(
+            f"{PREPROCESSING_URL}/preprocess/batch",
+            json=articles,
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data if isinstance(data, list) else []
+    except Exception as exc:
+        print(f"[Preprocessing] batch call failed: {exc}")
+        return []
+
+
 # ── Results DB persistence ─────────────────────────────────────────────────────
 
 async def _store_signal(signal: Signal, client: httpx.AsyncClient) -> None:
@@ -241,11 +276,39 @@ async def _store_signal(signal: Signal, client: httpx.AsyncClient) -> None:
         print(f"[ResultsDB] store failed: {exc}")
 
 
+async def _store_article(article: dict, client: httpx.AsyncClient) -> None:
+    payload = {
+        "id": article.get("id"),
+        "ticker": article.get("ticker", "").upper(),
+        "source": article.get("source", ""),
+        "content_type": article.get("content_type", "news"),
+        "title": article.get("title", ""),
+        "summary": article.get("summary"),
+        "url": article.get("url", ""),
+        "published_at": article.get("published_at"),
+        "ingested_at": article.get("ingested_at"),
+        "raw_text": article.get("raw_text"),
+        "is_filing": bool(article.get("is_filing", False)),
+        "filing_type": article.get("filing_type"),
+    }
+    if not payload["id"] or not payload["ticker"] or not payload["url"]:
+        return
+    try:
+        resp = await client.post(
+            f"{RESULTS_DB_URL}/results/article",
+            json=payload,
+            timeout=5.0,
+        )
+        resp.raise_for_status()
+    except Exception as exc:
+        print(f"[ResultsDB] article store failed: {exc}")
+
+
 # ── Ingestion orchestration ────────────────────────────────────────────────────
 
 async def _ingest_ticker_signal(ticker: str, client: httpx.AsyncClient) -> Signal:
     ticker = ticker.upper()
-    signal = await _compute_signal(ticker)
+    signal = await _compute_signal(ticker, persist_articles=True, results_client=client)
     _set_cached(ticker, signal)
     await _store_signal(signal, client)
     return signal
@@ -309,11 +372,17 @@ async def _ingest_all_signals(source: str) -> IngestAllResult:
 
 # ── Core aggregation ───────────────────────────────────────────────────────────
 
-async def _compute_signal(ticker: str) -> Signal:
+async def _compute_signal(
+    ticker: str,
+    persist_articles: bool = False,
+    results_client: Optional[httpx.AsyncClient] = None,
+) -> Signal:
     now = datetime.now(timezone.utc)
 
     async with httpx.AsyncClient() as client:
         articles = await _fetch_articles(ticker, client)
+        if persist_articles and results_client:
+            await asyncio.gather(*[_store_article(article, results_client) for article in articles])
 
         if not articles:
             return Signal(
@@ -326,12 +395,27 @@ async def _compute_signal(ticker: str) -> Signal:
                 supporting_articles=[],
             )
 
-        # Build per-article inference payloads — keep title separate so the
-        # engine can prepend it before FinBERT tokenisation.
+        processed_articles = await _preprocess_articles(articles, client)
+        article_by_id = {article.get("id"): article for article in articles}
+
+        # Build per-document inference payloads from preprocessed text. If the
+        # preprocessing service is unavailable, preserve signal continuity with
+        # the raw summary fallback used by earlier versions.
         infer_articles = [
             {
                 "id": a.get("id") or str(uuid.uuid4()),
+                "ticker": a.get("ticker", ticker),
+                "content_type": a.get("content_type", "news"),
+                "title": a.get("title", ""),
+                "text": (a.get("clean_text") or "")[:512].strip(),
+            }
+            for a in processed_articles
+            if (a.get("clean_text") or "").strip()
+        ] or [
+            {
+                "id": a.get("id") or str(uuid.uuid4()),
                 "ticker": ticker,
+                "content_type": a.get("content_type", "news"),
                 "title": a.get("title", ""),
                 "text": (a.get("summary") or "")[:512].strip(),
             }
@@ -344,20 +428,27 @@ async def _compute_signal(ticker: str) -> Signal:
             sentiments = []
             for art in infer_articles[:5]:
                 result = await _infer_single(
-                    art["id"], art["ticker"], art["title"], art["text"], client
+                    art["id"],
+                    art["ticker"],
+                    art["title"],
+                    art["text"],
+                    client,
+                    art.get("content_type", "news"),
                 )
                 sentiments.append(result)
             # Pad with None for articles we skipped
-            sentiments += [None] * (len(articles) - len(sentiments))
+            sentiments += [None] * (len(infer_articles) - len(sentiments))
 
         # Weighted aggregation
         weighted_sum = 0.0
         weight_total = 0.0
         article_sentiments: list[ArticleSentiment] = []
 
-        for article, sentiment in zip(articles, sentiments):
+        for infer_article, sentiment in zip(infer_articles, sentiments):
             if not sentiment:
                 continue
+
+            article = article_by_id.get(infer_article.get("id"), infer_article)
 
             pub_str = article.get("published_at")
             try:
@@ -375,6 +466,7 @@ async def _compute_signal(ticker: str) -> Signal:
             article_sentiments.append(ArticleSentiment(
                 article_id=article.get("id", ""),
                 ticker=ticker,
+                content_type=article.get("content_type", "news"),
                 title=article.get("title", ""),
                 published_at=pub_dt,
                 positive=round(pos, 4),
@@ -517,6 +609,7 @@ async def generate_signal(req: GenerateRequest):
             req.title,
             req.text[:512].strip(),
             client,
+            req.content_type,
         )
 
     if not sentiment:
@@ -538,6 +631,7 @@ async def generate_signal(req: GenerateRequest):
             ArticleSentiment(
                 article_id=req.article_id or "",
                 ticker=ticker,
+                content_type=req.content_type,
                 title=req.title,
                 published_at=pub_dt,
                 positive=round(pos, 4),

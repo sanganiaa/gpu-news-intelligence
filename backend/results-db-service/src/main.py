@@ -4,6 +4,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_db
@@ -31,6 +32,14 @@ app.add_middleware(
 @app.on_event("startup")
 def create_tables():
     Base.metadata.create_all(bind=engine)
+    inspector = inspect(engine)
+    if "articles" in inspector.get_table_names():
+        columns = {column["name"] for column in inspector.get_columns("articles")}
+        if "content_type" not in columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE articles ADD COLUMN content_type VARCHAR NOT NULL DEFAULT 'news'"))
+        with engine.begin() as connection:
+            connection.execute(text("UPDATE articles SET content_type = 'sec_filing' WHERE is_filing = TRUE OR filing_type IS NOT NULL"))
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -140,12 +149,33 @@ def write_article(body: ArticleCreate, db: Session = Depends(get_db)):
         # Idempotent — return the stored record without error
         return existing
 
-    row = Article(**body.model_dump())
+    article_data = body.model_dump()
+    if body.is_filing or body.filing_type:
+        article_data["content_type"] = "sec_filing"
+    row = Article(**article_data)
     row.ticker = body.ticker.upper()
     db.add(row)
     db.commit()
     db.refresh(row)
     return row
+
+
+@app.get("/results/articles", response_model=list[ArticleOut])
+def get_articles(
+    ticker: Optional[str] = Query(None),
+    content_type: Optional[str] = Query(None),
+    limit: int = Query(100, le=1000),
+    db: Session = Depends(get_db),
+):
+    """Query stored articles, optionally filtered by ticker and content type."""
+    q = db.query(Article)
+    if ticker:
+        q = q.filter(Article.ticker == ticker.upper())
+    if content_type:
+        q = q.filter(Article.content_type == content_type)
+
+    rows = q.order_by(Article.ingested_at.desc()).limit(limit).all()
+    return [ArticleOut.model_validate(r) for r in rows]
 
 
 # ── Metrics ───────────────────────────────────────────────────────────────────
@@ -195,6 +225,7 @@ def get_metrics(
 def get_ticker_history(
     ticker: str,
     limit: int = Query(50, le=500),
+    content_type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     """Return signals and articles stored for a ticker (for backtesting)."""
@@ -208,13 +239,14 @@ def get_ticker_history(
         .all()
     )
 
-    articles = (
+    articles_query = (
         db.query(Article)
         .filter(Article.ticker == ticker)
-        .order_by(Article.ingested_at.desc())
-        .limit(limit)
-        .all()
     )
+    if content_type:
+        articles_query = articles_query.filter(Article.content_type == content_type)
+
+    articles = articles_query.order_by(Article.ingested_at.desc()).limit(limit).all()
 
     return {
         "ticker": ticker,

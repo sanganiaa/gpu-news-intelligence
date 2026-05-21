@@ -4,6 +4,7 @@ import KPIRow from '../components/Operator/KPIRow';
 import ServiceHealth from '../components/Operator/ServiceHealth';
 import PipelineMetrics from '../components/Operator/PipelineMetrics';
 import IngestionFeed from '../components/Operator/IngestionFeed';
+import FilingsFeed from '../components/Operator/FilingsFeed';
 import ActiveSignals from '../components/Operator/ActiveSignals';
 import TickerDrilldown from '../components/Operator/TickerDrilldown';
 import SystemLog from '../components/Operator/SystemLog';
@@ -50,6 +51,12 @@ function newestTimestamp(...values) {
     .filter(value => Number.isFinite(value));
   if (!timestamps.length) return null;
   return new Date(Math.max(...timestamps)).toISOString();
+}
+
+function isLegacySecFiling(article = {}) {
+  if (article.is_filing || article.filing_type) return true;
+  const source = String(article.source || '').toLowerCase();
+  return source.includes('edgar') || source.includes('sec');
 }
 
 export default function Dashboard() {
@@ -193,6 +200,12 @@ export default function Dashboard() {
   }, [news.articles, resultsState.history, supportingById]);
 
   const displayedArticles = useMemo(() => enrichedArticles.slice(0, 12), [enrichedArticles]);
+  const newsFeedArticles = useMemo(
+    () => enrichedArticles
+      .filter(article => (article.content_type || 'news') === 'news' && !isLegacySecFiling(article))
+      .slice(0, 12),
+    [enrichedArticles],
+  );
   const drilldownSignal = useMemo(
     () => signals.signals.find(signal => signal.ticker === drilldownTicker) || (selectedSignal?.ticker === drilldownTicker ? selectedSignal : null),
     [drilldownTicker, selectedSignal, signals.signals],
@@ -275,10 +288,11 @@ export default function Dashboard() {
     if (news.sourceStatus) {
       const total = Object.values(news.sourceStatus).reduce((sum, n) => sum + Number(n || 0), 0);
       const active = Object.values(news.sourceStatus).filter(n => Number(n) > 0).length;
+      const sourceCount = Object.keys(news.sourceStatus).length || 1;
       rows.push({
         label: 'Source diversity',
-        value: active ? Math.round((active / 3) * 100) : 0,
-        display: total ? `${active}/3 sources` : 'no articles',
+        value: active ? Math.round((active / sourceCount) * 100) : 0,
+        display: total ? `${active}/${sourceCount} sources` : 'no articles',
         color: 'var(--amber)',
       });
     }
@@ -358,7 +372,7 @@ export default function Dashboard() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
             <IngestionFeed
-              articles={displayedArticles}
+              articles={newsFeedArticles}
               ticker={ticker}
               loading={news.loading || resultsState.loading}
               error={news.error}
@@ -366,6 +380,7 @@ export default function Dashboard() {
             />
             <ActiveSignals ticker={ticker} signals={signals.signals} loading={signals.loading} error={signals.error} onTickerClick={openTickerDrilldown} />
           </div>
+          <FilingsFeed articles={[...(news.latest || []), ...enrichedArticles]} loading={news.loading || resultsState.loading} error={news.error} />
           {drilldownTicker && (
             <TickerDrilldown
               ticker={drilldownTicker}

@@ -1,8 +1,9 @@
 import os
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime, timezone
+from typing import Literal
 
 from .sources.yahoo import fetch_yahoo_rss
 from .sources.newsapi import fetch_newsapi
@@ -11,6 +12,8 @@ from .sources.fred import fetch_fred_indicators
 from .sources.reddit import fetch_reddit_top_posts
 from .dedup import seen_count, clear
 from .schema import Article
+
+ContentType = Literal["news", "sec_filing", "reddit", "macro"]
 
 app = FastAPI(title="News Ingestion Service")
 app.add_middleware(
@@ -33,6 +36,19 @@ POLL_INTERVAL = int(os.getenv("POLL_INTERVAL_SECONDS", 60))
 # In-memory article store — keyed by ticker for fast lookup
 # Structure: { "NVDA": [Article, ...], "AAPL": [...], ... }
 _store: dict[str, list[Article]] = {}
+
+
+def _all_articles() -> list[Article]:
+    return [a for articles in _store.values() for a in articles]
+
+
+def _filter_articles(
+    articles: list[Article],
+    content_type: ContentType | None = None,
+) -> list[Article]:
+    if not content_type:
+        return articles
+    return [a for a in articles if a.content_type == content_type]
 
 
 def store_articles(articles: list[Article]):
@@ -114,15 +130,33 @@ def health():
 
 
 @app.get("/news/latest")
-def get_latest(limit: int = Query(50, le=200)):
+def get_latest(
+    limit: int = Query(50, le=200),
+    content_type: ContentType | None = Query(None),
+):
     """Return most recently ingested articles across all tickers."""
-    all_articles = [a for articles in _store.values() for a in articles]
+    all_articles = _filter_articles(_all_articles(), content_type)
     sorted_articles = sorted(all_articles, key=lambda a: a.ingested_at, reverse=True)
     return [a.model_dump() for a in sorted_articles[:limit]]
 
 
 # Specific literal routes must be declared before /news/{ticker} so FastAPI
 # doesn't swallow them as ticker path parameters.
+@app.get("/articles")
+def get_articles(
+    limit: int = Query(50, le=500),
+    ticker: str | None = Query(None),
+    content_type: ContentType | None = Query(None),
+):
+    """Return ingested items, optionally filtered by ticker and content type."""
+    articles = _all_articles()
+    if ticker:
+        articles = [a for a in articles if a.ticker == ticker.upper()]
+    articles = _filter_articles(articles, content_type)
+    sorted_articles = sorted(articles, key=lambda a: a.ingested_at, reverse=True)
+    return [a.model_dump() for a in sorted_articles[:limit]]
+
+
 @app.get("/news/tickers")
 def list_tickers():
     """List all tickers currently in the store with their article counts."""
@@ -151,6 +185,7 @@ async def get_by_ticker(
     ticker: str,
     limit: int = Query(20, le=100),
     refresh: bool = Query(False),
+    content_type: ContentType | None = Query(None),
 ):
     """
     Return articles for a specific ticker.
@@ -163,7 +198,7 @@ async def get_by_ticker(
         print(f"[On-demand] Fetching {ticker}...")
         await ingest_ticker(ticker)
 
-    articles = _store.get(ticker, [])
+    articles = _filter_articles(_store.get(ticker, []), content_type)
     if not articles:
         return []
 

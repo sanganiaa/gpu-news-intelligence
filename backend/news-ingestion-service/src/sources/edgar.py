@@ -110,6 +110,7 @@ async def fetch_edgar_8k(ticker: str) -> list[Article]:
                 id=article_id,
                 ticker=ticker.upper(),
                 source="sec_edgar",
+                content_type="sec_filing",
                 title=f"{ticker.upper()} 8-K Filing — {filing_date_str}",
                 summary=f"SEC 8-K filing. Accession: {accession}",
                 url=url,

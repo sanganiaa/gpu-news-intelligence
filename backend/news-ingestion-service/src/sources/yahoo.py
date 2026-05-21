@@ -36,6 +36,7 @@ async def fetch_yahoo_rss(ticker: str) -> list[Article]:
                 id=article_id,
                 ticker=ticker.upper(),
                 source="yahoo_rss",
+                content_type="news",
                 title=entry.get("title", "").strip(),
                 summary=entry.get("summary", "").strip(),
                 url=link,

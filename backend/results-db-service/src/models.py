@@ -33,6 +33,7 @@ class Article(Base):
     id = Column(String, primary_key=True)           # SHA256 of URL (mirrors ingestion service)
     ticker = Column(String, nullable=False, index=True)
     source = Column(String, nullable=False)         # yahoo_rss | newsapi | sec_edgar
+    content_type = Column(String, default="news", nullable=False)
     title = Column(String, nullable=False)
     summary = Column(Text, nullable=True)
     url = Column(String, nullable=False)

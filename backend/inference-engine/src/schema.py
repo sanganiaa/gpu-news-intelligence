@@ -1,10 +1,13 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
+
+ContentType = Literal["news", "sec_filing", "reddit", "macro"]
 
 
 class SentimentRequest(BaseModel):
     id: str
     ticker: str
+    content_type: ContentType = "news"
     text: str = Field(..., description="Cleaned article text (from preprocessing service)")
     title: Optional[str] = None
 
@@ -18,6 +21,7 @@ class Probabilities(BaseModel):
 class SentimentResult(BaseModel):
     id: str
     ticker: str
+    content_type: ContentType = "news"
     sentiment: str  # positive | negative | neutral
     confidence: float
     probabilities: Probabilities
@@ -39,6 +43,7 @@ class BatchSentimentResponse(BaseModel):
 class ClassifyRequest(BaseModel):
     id: str
     ticker: str
+    content_type: ContentType = "news"
     text: str
     title: Optional[str] = None
 
@@ -46,6 +51,7 @@ class ClassifyRequest(BaseModel):
 class ClassifyResult(BaseModel):
     id: str
     ticker: str
+    content_type: ContentType = "news"
     event_type: str  # earnings | fda | merger | analyst | macro | filing | other
     event_confidence: float
     sentiment: str

@@ -1,6 +1,8 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Literal, Optional
 from datetime import datetime
+
+ContentType = Literal["news", "sec_filing", "reddit", "macro"]
 
 
 class Article(BaseModel):
@@ -11,6 +13,7 @@ class Article(BaseModel):
     id: str
     ticker: str
     source: str
+    content_type: ContentType = "news"
     title: str
     summary: Optional[str] = None
     url: str
@@ -37,6 +40,7 @@ class ProcessedArticle(BaseModel):
     id: str
     ticker: str
     source: str
+    content_type: ContentType = "news"
     title: str
     url: str
     published_at: datetime

@@ -90,6 +90,7 @@ export function useInference(articles = []) {
       .then(processed => inferBatchSentiment(processed.map(article => ({
         id: article.id,
         ticker: article.ticker,
+        content_type: article.content_type || 'news',
         title: article.title,
         text: article.clean_text,
       }))))

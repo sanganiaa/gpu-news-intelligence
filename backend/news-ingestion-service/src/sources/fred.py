@@ -84,6 +84,7 @@ async def fetch_fred_indicators() -> list[Article]:
                     id=article_id,
                     ticker="MACRO",
                     source="fred",
+                    content_type="macro",
                     title=title,
                     summary=f"Latest FRED observation for {meta['name']} ({series_id}).",
                     url=url,

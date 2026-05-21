@@ -1,6 +1,8 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Literal, Optional
 from datetime import datetime
+
+ContentType = Literal["news", "sec_filing", "reddit", "macro"]
 
 
 class Article(BaseModel):
@@ -12,6 +14,7 @@ class Article(BaseModel):
     id: str                              # SHA256 hash of URL — used for dedup
     ticker: str                          # e.g. "NVDA"
     source: str                          # "yahoo_rss" | "newsapi" | "sec_edgar"
+    content_type: ContentType = "news"   # "news" | "sec_filing" | "reddit" | "macro"
     title: str
     summary: Optional[str] = None
     url: str

@@ -24,7 +24,7 @@ export function useNews(ticker, { limit = 20 } = {}) {
       if (initial) setState(prev => ({ ...prev, loading: true, error: null }));
 
       Promise.allSettled([
-        fetchArticlesByTicker(ticker, { limit }),
+        fetchArticlesByTicker(ticker, { limit, contentType: 'news' }),
         fetchLatestArticles(50),
         fetchNewsTickers(),
         fetchSourceStatus(),

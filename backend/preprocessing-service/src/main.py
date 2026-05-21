@@ -47,6 +47,7 @@ def _preprocess(article: Article) -> ProcessedArticle:
         id=article.id,
         ticker=article.ticker,
         source=article.source,
+        content_type=article.content_type,
         title=article.title,
         url=article.url,
         published_at=article.published_at,

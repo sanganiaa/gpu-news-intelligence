@@ -68,6 +68,7 @@ async def fetch_newsapi(ticker: str) -> list[Article]:
                 id=article_id,
                 ticker=ticker.upper(),
                 source="newsapi",
+                content_type="news",
                 title=item.get("title", "").strip(),
                 summary=item.get("description", "").strip(),
                 url=url,

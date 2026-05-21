@@ -57,6 +57,7 @@ def sentiment(req: SentimentRequest):
     return SentimentResult(
         id=req.id,
         ticker=req.ticker,
+        content_type=req.content_type,
         sentiment=result["sentiment"],
         confidence=result["confidence"],
         probabilities=Probabilities(**result["probabilities"]),
@@ -87,6 +88,7 @@ def batch_inference(req: BatchSentimentRequest):
         SentimentResult(
             id=article.id,
             ticker=article.ticker,
+            content_type=article.content_type,
             sentiment=r["sentiment"],
             confidence=r["confidence"],
             probabilities=Probabilities(**r["probabilities"]),
@@ -125,6 +127,7 @@ def classify(req: ClassifyRequest):
     return ClassifyResult(
         id=req.id,
         ticker=req.ticker,
+        content_type=req.content_type,
         event_type=event_type,
         event_confidence=event_conf,
         sentiment=sentiment_result["sentiment"],

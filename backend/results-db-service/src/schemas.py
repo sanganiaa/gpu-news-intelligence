@@ -1,6 +1,8 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict
+
+ContentType = Literal["news", "sec_filing", "reddit", "macro"]
 
 
 # ── Signal ────────────────────────────────────────────────────────────────────
@@ -47,6 +49,7 @@ class ArticleCreate(BaseModel):
     id: str
     ticker: str
     source: str
+    content_type: ContentType = "news"
     title: str
     summary: Optional[str] = None
     url: str
@@ -61,6 +64,7 @@ class ArticleOut(BaseModel):
     id: str
     ticker: str
     source: str
+    content_type: ContentType
     title: str
     summary: Optional[str]
     url: str

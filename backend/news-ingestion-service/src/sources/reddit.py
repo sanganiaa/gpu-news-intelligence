@@ -62,6 +62,7 @@ async def fetch_reddit_top_posts(limit_per_subreddit: int = 10) -> list[Article]
                         id=article_id,
                         ticker="REDDIT",
                         source="reddit",
+                        content_type="reddit",
                         title=title,
                         summary=summary,
                         url=url,

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 
 const srcStyle = {
   yahoo:   { bg: '#E6F1FB', color: '#0C447C' },
@@ -85,6 +85,29 @@ function implicationTone(value = '', sentiment) {
   return sentiment;
 }
 
+function isSecFiling(article = {}) {
+  if (article.content_type === 'sec_filing') return true;
+  if (article.is_filing || article.filing_type) return true;
+
+  const source = String(article.source || '').toLowerCase();
+  const title = String(article.title || '').toLowerCase();
+  return (
+    source.includes('edgar') ||
+    source.includes('sec') ||
+    /\bsec\b/.test(title) ||
+    /\b8-k\b/.test(title) ||
+    /\b10-k\b/.test(title) ||
+    /\b10-q\b/.test(title) ||
+    title.includes('form 8-k') ||
+    title.includes('form 10-k') ||
+    title.includes('form 10-q')
+  );
+}
+
+function isReadableNews(article = {}) {
+  return (article.content_type || 'news') === 'news' && !isSecFiling(article);
+}
+
 function SentimentBar({ article }) {
   const values = sentimentValues(article);
   return (
@@ -104,23 +127,28 @@ function SentimentBar({ article }) {
 }
 
 export default function IngestionFeed({ articles = [], ticker, loading, error, onTickerClick }) {
+  const newsArticles = useMemo(
+    () => articles.filter(isReadableNews),
+    [articles],
+  );
+
   return (
     <div className="card" style={{ gridColumn: 'span 2' }}>
       <div className="card-title">
         Live ingestion feed · <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{ticker}</span>
-        <span style={{ fontSize: 10 }}>{loading ? 'loading' : `${articles.length} latest`}</span>
+        <span style={{ fontSize: 10 }}>{loading ? 'loading' : `${newsArticles.length} latest`}</span>
       </div>
       {error && (
         <div style={{ fontSize: 11, color: 'var(--red-text)', padding: '0 0 8px' }}>
           News service unavailable: {error.message}
         </div>
       )}
-      {!loading && articles.length === 0 ? (
+      {!loading && newsArticles.length === 0 ? (
         <div style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '8px 0' }}>
-          No articles available for {ticker}.
+          No news articles available for {ticker}.
         </div>
       ) : (
-        articles.map(a => {
+        newsArticles.map(a => {
           const ss = srcStyle[sourceClass(a.source)] || srcStyle.yahoo;
           const sentiment = normalizeSentiment(a);
           const borderColor = sentStyle[sentiment]?.border || sentStyle.neutral.border;
