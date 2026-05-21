@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 const verdictStyle = {
   BUY:  { bg: '#EAF3DE', color: '#27500A', bar: '#3B6D11' },
@@ -16,6 +16,15 @@ function formatTime(value) {
 }
 
 export default function ActiveSignals({ ticker, signals = [], loading, error, onTickerClick }) {
+  const [timedOut, setTimedOut] = useState(false);
+
+  useEffect(() => {
+    setTimedOut(false);
+    if (!loading || signals.length > 0) return undefined;
+    const id = setTimeout(() => setTimedOut(true), 10000);
+    return () => clearTimeout(id);
+  }, [loading, signals.length]);
+
   const isInList = signals.find(s => s.ticker === ticker);
 
   return (
@@ -29,9 +38,9 @@ export default function ActiveSignals({ ticker, signals = [], loading, error, on
           Signal service unavailable: {error.message}
         </div>
       )}
-      {!loading && signals.length === 0 && (
+      {(!loading || timedOut) && signals.length === 0 && (
         <div style={{ padding: '8px 0', fontSize: 11, color: 'var(--text-secondary)' }}>
-          No generated signals available.
+          No signals yet — run ingestion first.
         </div>
       )}
       {signals.map(s => {

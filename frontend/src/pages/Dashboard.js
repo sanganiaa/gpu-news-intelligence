@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import TopBar from '../components/Operator/TopBar';
 import KPIRow from '../components/Operator/KPIRow';
 import ServiceHealth from '../components/Operator/ServiceHealth';
@@ -10,7 +10,7 @@ import TickerDrilldown from '../components/Operator/TickerDrilldown';
 import SystemLog from '../components/Operator/SystemLog';
 import SearchBar from '../components/Dashboard/SearchBar';
 import MarketOverview from '../components/MarketOverview';
-import { getHealth } from '../api/client';
+import { getHealth, SERVICE_URLS } from '../api/client';
 import { fetchMetrics, fetchSignalAccuracy, fetchTickerHistory } from '../api/results';
 import { useInference } from '../hooks/useInference';
 import { useNews } from '../hooks/useNews';
@@ -27,8 +27,21 @@ const SERVICES = [
 const SERVICE_HEALTH_POLL_MS = 10000;
 const RESULTS_POLL_MS = 30000;
 
+async function fetchInferenceHealthRaw() {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 4000);
+  try {
+    const res = await fetch(`${SERVICE_URLS.inference}/health`, { signal: controller.signal });
+    const data = await res.json().catch(() => ({}));
+    if (data?.status === 'ok' || res.ok) return data;
+    throw new Error(data?.detail || `HTTP ${res.status}`);
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 function pct(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return 'n/a';
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
   return `${Math.round(Number(value) * 100)}%`;
 }
 
@@ -104,7 +117,11 @@ export default function Dashboard() {
       inFlight = true;
       if (initial) setServiceState(prev => ({ ...prev, loading: true }));
 
-      Promise.allSettled(SERVICES.map(service => getHealth(service.key))).then(results => {
+      Promise.allSettled(
+        SERVICES.map(service =>
+          service.key === 'inference' ? fetchInferenceHealthRaw() : getHealth(service.key),
+        ),
+      ).then(results => {
         if (cancelled) return;
         const services = SERVICES.map((service, index) => {
           const result = results[index];
@@ -259,17 +276,17 @@ export default function Dashboard() {
   const kpis = {
     articleCount: {
       label: 'Current article cache',
-      value: news.loading ? '...' : formatNumber(articleTotal || displayedArticles.length),
+      value: news.loading ? '—' : formatNumber(articleTotal || displayedArticles.length),
       sub: `news ${formatNumber(articleBreakdown.news)} · SEC ${formatNumber(articleBreakdown.sec_filing)} · reddit ${formatNumber(articleBreakdown.reddit)} · macro ${formatNumber(articleBreakdown.macro)}`,
     },
     signalCount: {
-      value: signals.loading ? '...' : formatNumber(resultsState.accuracy?.total_signals || signals.signals.length),
+      value: signals.loading ? '—' : formatNumber(resultsState.accuracy?.total_signals || signals.signals.length),
       sub: `BUY ${signalDistribution.BUY || 0} · HOLD ${signalDistribution.HOLD || 0} · SELL ${signalDistribution.SELL || 0}`,
-      accuracy: resultsState.loading ? '...' : pct(resultsState.accuracy?.accuracy),
+      accuracy: resultsState.loading ? '—' : pct(resultsState.accuracy?.accuracy),
       accuracySub: `${resultsState.accuracy?.signals_with_outcome || 0} outcomes recorded`,
     },
     inference: {
-      value: inferenceHealth?.model_loaded ? 'ready' : inference.loading ? '...' : 'n/a',
+      value: inferenceHealth?.model_loaded ? 'ready' : inference.loading ? '—' : '—',
       sub: inference.batch?.throughput_articles_per_sec
         ? `${inference.batch.throughput_articles_per_sec}/sec · ${inference.batch.device}`
         : inferenceHealth?.device ? `${inferenceHealth.device} · FinBERT` : 'model health endpoint',
@@ -280,37 +297,17 @@ export default function Dashboard() {
     const rows = [];
     if (inferenceHealth?.model_load_time_ms !== undefined) {
       const ms = Number(inferenceHealth.model_load_time_ms || 0);
-      rows.push({
-        label: 'Model load time',
-        value: Math.min(ms / 100, 100),
-        display: `${Math.round(ms)}ms`,
-        color: 'var(--blue)',
-      });
+      rows.push({ label: 'Model load time', value: Math.min(ms / 100, 100), display: `${Math.round(ms)}ms`, color: 'var(--blue)' });
     }
     if (inference.batch?.total_latency_ms !== undefined) {
       const avgMs = Number(inference.batch.total_latency_ms || 0) / Math.max(Number(inference.batch.total_articles || 1), 1);
-      rows.push({
-        label: 'Inference latency avg',
-        value: Math.min(avgMs, 100),
-        display: `${Math.round(avgMs)}ms`,
-        color: 'var(--blue)',
-      });
+      rows.push({ label: 'Inference latency avg', value: Math.min(avgMs, 100), display: `${Math.round(avgMs)}ms`, color: 'var(--blue)' });
     }
     if (averageConfidence !== null) {
-      rows.push({
-        label: 'Signal confidence avg',
-        value: Math.round(averageConfidence * 100),
-        display: pct(averageConfidence),
-        color: 'var(--green)',
-      });
+      rows.push({ label: 'Signal confidence avg', value: Math.round(averageConfidence * 100), display: pct(averageConfidence), color: 'var(--green)' });
     }
     resultsState.metrics.slice(0, 3).forEach(metric => {
-      rows.push({
-        label: metric.metric_name,
-        value: Math.max(0, Math.min(Number(metric.value || 0) * 100, 100)),
-        display: `${metric.value}`,
-        color: 'var(--green)',
-      });
+      rows.push({ label: metric.metric_name, value: Math.max(0, Math.min(Number(metric.value || 0) * 100, 100)), display: `${metric.value}`, color: 'var(--green)' });
     });
     if (news.sourceStatus) {
       const sources = sourceCounts(news.sourceStatus);
@@ -328,17 +325,13 @@ export default function Dashboard() {
     return rows;
   }, [averageConfidence, inference.batch, inferenceHealth, news.sourceStatus, resultsState.metrics]);
 
+  const svcStatusRef = useRef({});
   const systemLogs = useMemo(() => {
     const now = new Date().toISOString();
-    const logs = serviceState.services.map(service => ({
-      id: `svc-${service.key}`,
-      cls: service.status.startsWith('running') ? 'ok' : 'err',
-      svc: `[${service.key}]`,
-      msg: service.status.startsWith('running') ? `${service.name} health check ok` : service.error?.message || 'health check failed',
-      ts: now,
-    }));
+    const logs = [];
+
     if (selectedSignal) {
-      logs.unshift({
+      logs.push({
         id: `signal-${selectedSignal.ticker}`,
         cls: 'info',
         svc: '[signals]',
@@ -347,11 +340,30 @@ export default function Dashboard() {
       });
     }
     if (inference.sentimentError) {
-      logs.unshift({ id: 'inference-error', cls: 'err', svc: '[inference]', msg: inference.sentimentError.message, ts: now });
+      logs.push({ id: 'inference-error', cls: 'err', svc: '[inference]', msg: inference.sentimentError.message, ts: now });
     }
     if (resultsState.error) {
-      logs.unshift({ id: 'results-error', cls: 'err', svc: '[results]', msg: resultsState.error.message, ts: now });
+      logs.push({ id: 'results-error', cls: 'err', svc: '[results]', msg: resultsState.error.message, ts: now });
     }
+
+    const prevStatus = svcStatusRef.current;
+    serviceState.services.forEach(service => {
+      const isRunning = service.status.startsWith('running');
+      const changed = prevStatus[service.key] !== service.status;
+      prevStatus[service.key] = service.status;
+      if (!isRunning || changed) {
+        logs.push({
+          id: `svc-${service.key}`,
+          cls: isRunning ? 'ok' : 'err',
+          svc: `[${service.key}]`,
+          msg: isRunning
+            ? `${service.name} health check ok`
+            : service.error?.message || 'health check failed',
+          ts: now,
+        });
+      }
+    });
+
     return logs.slice(0, 12);
   }, [inference.sentimentError, selectedSignal, serviceState.services, resultsState.error]);
 
@@ -399,13 +411,14 @@ export default function Dashboard() {
             <ServiceHealth services={serviceState.services} loading={serviceState.loading} />
             <PipelineMetrics metrics={pipelineMetrics} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div className="feed-grid">
             <IngestionFeed
               articles={enrichedArticles}
               ticker={ticker}
               loading={news.loading || resultsState.loading}
               error={news.error}
               onTickerClick={openTickerDrilldown}
+              lastRefreshed={news.updatedAt}
             />
             <ActiveSignals ticker={ticker} signals={signals.signals} loading={signals.loading} error={signals.error} onTickerClick={openTickerDrilldown} />
           </div>

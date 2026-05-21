@@ -230,11 +230,7 @@ export default function MarketOverview({ latestArticles = [], tickerArticles = [
           </div>
           {macroIndicators.length === 0 ? (
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '8px 0' }}>
-              {loading
-                ? 'Waiting for macro observations from the news service.'
-                : Number(sourceCounts(sourceStatus).fred || 0) === 0
-                  ? 'No FRED observations yet. Set FRED_API_KEY and run an ingestion cycle to populate CPI, unemployment, and fed funds data.'
-                  : 'No macro observations are present in the current source window.'}
+              {loading ? 'Loading macro data...' : 'Macro data coming soon'}
             </div>
           ) : macroIndicators.map(article => (
             <div key={article.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, padding: '7px 0', borderBottom: '0.5px solid var(--border)' }}>

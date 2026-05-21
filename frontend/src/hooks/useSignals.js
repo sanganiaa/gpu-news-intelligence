@@ -43,30 +43,32 @@ export function useSignals(ticker) {
         const [selectedResult, topPicksResult] = results;
         const firstError = results.find(r => r.status === 'rejected');
 
-        const selected = selectedResult.status === 'fulfilled' ? normalizeSignal(selectedResult.value) : prev.selected;
-        const topPicks = topPicksResult.status === 'fulfilled' ? (topPicksResult.value || []).map(normalizeSignal) : prev.topPicks;
+        setState(prev => {
+          const selected = selectedResult.status === 'fulfilled' ? normalizeSignal(selectedResult.value) : prev.selected;
+          const topPicks = topPicksResult.status === 'fulfilled' ? (topPicksResult.value || []).map(normalizeSignal) : prev.topPicks;
 
-        if (process.env.NODE_ENV === 'development') {
-          console.debug('[useSignals]', {
-            ticker,
+          if (process.env.NODE_ENV === 'development') {
+            console.debug('[useSignals]', {
+              ticker,
+              selected,
+              topPickCount: topPicks.length,
+              topPicks: topPicks.map(signal => ({
+                ticker: signal.ticker,
+                verdict: signal.verdict,
+                confidence: signal.confidence,
+                net_sentiment: signal.net_sentiment,
+                article_count: signal.article_count,
+              })),
+            });
+          }
+
+          return {
             selected,
-            topPickCount: topPicks.length,
-            topPicks: topPicks.map(signal => ({
-              ticker: signal.ticker,
-              verdict: signal.verdict,
-              confidence: signal.confidence,
-              net_sentiment: signal.net_sentiment,
-              article_count: signal.article_count,
-            })),
-          });
-        }
-
-        setState({
-          selected,
-          topPicks,
-          loading: false,
-          error: firstError?.reason || null,
-          updatedAt: new Date().toISOString(),
+            topPicks,
+            loading: false,
+            error: firstError?.reason || null,
+            updatedAt: new Date().toISOString(),
+          };
         });
       }).finally(() => {
         inFlight = false;

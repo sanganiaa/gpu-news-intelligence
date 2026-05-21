@@ -15,7 +15,8 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'verdict={d[\\\\\"verdict\\\\\"]} confidence={d[\\\\\"confidence\\\\\"]} article_count={d[\\\\\"article_count\\\\\"]}'\\)\")",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'{len\\(d\\)} BUY signals'\\)\")",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'total={d[\\\\\"total_signals\\\\\"]} accuracy={d[\\\\\"accuracy\\\\\"]}'\\)\")",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'loaded={d[\\\\\"model_loaded\\\\\"]} device={d[\\\\\"device\\\\\"]}'\\)\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'loaded={d[\\\\\"model_loaded\\\\\"]} device={d[\\\\\"device\\\\\"]}'\\)\")",
+      "Bash(npm run *)"
     ]
   }
 }
