@@ -119,7 +119,7 @@ export default function Dashboard() {
 
       Promise.allSettled(
         SERVICES.map(service =>
-          service.key === 'inference' ? fetchInferenceHealthRaw() : getHealth(service.key),
+          service.key === 'inference' ? fetchInferenceHealthRaw() : getHealth(service.key, { timeoutMs: 10000 }),
         ),
       ).then(results => {
         if (cancelled) return;
