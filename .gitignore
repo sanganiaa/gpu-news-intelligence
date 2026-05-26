@@ -12,3 +12,4 @@ venv/
 *.log
 .vercel
 .env*.local
+backend/results-db-service/results.db
