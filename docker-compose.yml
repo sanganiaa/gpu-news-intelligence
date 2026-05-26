@@ -1,41 +1,96 @@
 version: "3.9"
 
 services:
-  api-gateway:
-    build: ./backend/api-gateway
+  # ── Infrastructure ────────────────────────────────────────────────────────────
+
+  redis:
+    image: redis:7-alpine
     ports:
-      - "4000:4000"
-    depends_on:
-      - news-ingestion-service
-      - preprocessing-service
-      - inference-engine
-      - signal-generation-service
-      - results-db-service
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
     environment:
-      - NODE_ENV=development
+      POSTGRES_DB: gpu_news
+      POSTGRES_USER: gpu_news
+      POSTGRES_PASSWORD: gpu_news
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gpu_news -d gpu_news"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # ── Backend services ──────────────────────────────────────────────────────────
 
   news-ingestion-service:
     build: ./backend/news-ingestion-service
     ports:
       - "5001:5001"
+    env_file: .env
     environment:
       - PYTHONUNBUFFERED=1
-      - FRED_API_KEY=${FRED_API_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
 
   preprocessing-service:
     build: ./backend/preprocessing-service
     ports:
       - "5002:5002"
+    env_file: .env
     environment:
       - PYTHONUNBUFFERED=1
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5002/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+    restart: unless-stopped
 
   inference-engine:
     build: ./backend/inference-engine
     ports:
       - "5003:5003"
+    env_file: .env
     environment:
       - PYTHONUNBUFFERED=1
       - DEVICE=${DEVICE:-cpu}
+    volumes:
+      - huggingface_cache:/root/.cache/huggingface
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5003/health')"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 120s
+    restart: unless-stopped
     # Uncomment on NVIDIA cloud instance:
     # deploy:
     #   resources:
@@ -45,39 +100,129 @@ services:
     #           count: 1
     #           capabilities: [gpu]
 
+  results-db-service:
+    build: ./backend/results-db-service
+    ports:
+      - "5005:5005"
+    env_file: .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5005/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+
   signal-generation-service:
     build: ./backend/signal-generation-service
     ports:
       - "5004:5004"
-    depends_on:
-      - news-ingestion-service
-      - preprocessing-service
-      - inference-engine
-      - results-db-service
+    env_file: .env
     environment:
       - PYTHONUNBUFFERED=1
       - NEWS_URL=http://news-ingestion-service:5001
       - PREPROCESSING_URL=http://preprocessing-service:5002
       - INFERENCE_URL=http://inference-engine:5003
       - RESULTS_DB_URL=http://results-db-service:5005
-      - SIGNAL_INGEST_INTERVAL_SECONDS=${SIGNAL_INGEST_INTERVAL_SECONDS:-3600}
+    depends_on:
+      news-ingestion-service:
+        condition: service_healthy
+      preprocessing-service:
+        condition: service_healthy
+      inference-engine:
+        condition: service_healthy
+      results-db-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5004/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
 
-  results-db-service:
-    build: ./backend/results-db-service
+  api-gateway:
+    build: ./backend/api-gateway
     ports:
-      - "5005:5005"
+      - "4000:4000"
+    env_file: .env
     environment:
-      - PYTHONUNBUFFERED=1
-      - DATABASE_URL=sqlite:////data/results.db
-    volumes:
-      - results-db:/data
+      - NODE_ENV=development
+    depends_on:
+      news-ingestion-service:
+        condition: service_healthy
+      preprocessing-service:
+        condition: service_healthy
+      inference-engine:
+        condition: service_healthy
+      signal-generation-service:
+        condition: service_healthy
+      results-db-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
 
   frontend:
     build: ./frontend
     ports:
       - "3000:80"
+    env_file: .env
     depends_on:
-      - api-gateway
+      api-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ── One-shot seeder ───────────────────────────────────────────────────────────
+  # Runs once after all services are healthy, ingests signals for all tickers, then exits.
+
+  seeder:
+    build: ./backend/signal-generation-service
+    env_file: .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - NEWS_URL=http://news-ingestion-service:5001
+      - PREPROCESSING_URL=http://preprocessing-service:5002
+      - INFERENCE_URL=http://inference-engine:5003
+      - RESULTS_DB_URL=http://results-db-service:5005
+    depends_on:
+      signal-generation-service:
+        condition: service_healthy
+    command:
+      - python
+      - -c
+      - |
+        import httpx, sys
+        print("Seeder: triggering full ingestion for all tickers...")
+        try:
+            r = httpx.post(
+                "http://signal-generation-service:5004/signals/ingest/all",
+                timeout=300.0,
+            )
+            print(r.text)
+            sys.exit(0 if r.is_success else 1)
+        except Exception as e:
+            print(f"Seeder error: {e}", file=sys.stderr)
+            sys.exit(1)
+    restart: "no"
 
 volumes:
   results-db:
+  huggingface_cache:
+  postgres_data:
+  redis_data:
