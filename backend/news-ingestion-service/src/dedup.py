@@ -1,7 +1,5 @@
 import hashlib
-
-# In-memory store — swap for Redis in production
-_seen_ids: set = set()
+from .cache import cache
 
 
 def make_id(url: str) -> str:
@@ -10,17 +8,17 @@ def make_id(url: str) -> str:
 
 
 def is_duplicate(article_id: str) -> bool:
-    return article_id in _seen_ids
+    return cache.dedup_is_seen(article_id)
 
 
 def mark_seen(article_id: str):
-    _seen_ids.add(article_id)
+    cache.dedup_mark_seen(article_id)
 
 
 def seen_count() -> int:
-    return len(_seen_ids)
+    return cache.dedup_seen_count()
 
 
 def clear():
     """Clear dedup store — useful for testing."""
-    _seen_ids.clear()
+    cache.clear_dedup()

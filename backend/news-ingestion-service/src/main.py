@@ -10,8 +10,9 @@ from .sources.newsapi import fetch_newsapi
 from .sources.edgar import fetch_edgar_8k
 from .sources.fred import fetch_fred_indicators
 from .sources.reddit import fetch_reddit_top_posts
-from .dedup import seen_count, clear
+from .dedup import seen_count
 from .schema import Article
+from .cache import cache
 
 ContentType = Literal["news", "sec_filing", "reddit", "macro"]
 
@@ -33,13 +34,9 @@ DEFAULT_TICKERS = [
 
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL_SECONDS", 60))
 
-# In-memory article store — keyed by ticker for fast lookup
-# Structure: { "NVDA": [Article, ...], "AAPL": [...], ... }
-_store: dict[str, list[Article]] = {}
-
 
 def _all_articles() -> list[Article]:
-    return [a for articles in _store.values() for a in articles]
+    return cache.get_all_articles()
 
 
 def _article_identity(article: Article) -> str:
@@ -122,15 +119,12 @@ def _filter_articles(
 
 
 def store_articles(articles: list[Article]):
-    """Add new articles to the in-memory store, grouped by ticker."""
+    """Add new articles to the store, grouped by ticker."""
+    by_ticker: dict[str, list[Article]] = {}
     for article in articles:
-        ticker = article.ticker
-        if ticker not in _store:
-            _store[ticker] = []
-        existing_ids = {_article_identity(a) for a in _store[ticker]}
-        if _article_identity(article) in existing_ids:
-            continue
-        _store[ticker].append(article)
+        by_ticker.setdefault(article.ticker, []).append(article)
+    for ticker, ticker_articles in by_ticker.items():
+        cache.save_articles(ticker, ticker_articles)
 
 
 async def ingest_ticker(ticker: str) -> list[Article]:
@@ -141,7 +135,7 @@ async def ingest_ticker(ticker: str) -> list[Article]:
     ticker = ticker.upper()
     new_articles = []
 
-    before_count = len(_store.get(ticker, []))
+    before_count = cache.get_article_count(ticker)
 
     yahoo   = await fetch_yahoo_rss(ticker)
     newsapi = await fetch_newsapi(ticker)
@@ -152,7 +146,7 @@ async def ingest_ticker(ticker: str) -> list[Article]:
     new_articles.extend(edgar)
 
     store_articles(new_articles)
-    after_count = len(_store.get(ticker, []))
+    after_count = cache.get_article_count(ticker)
 
     print(
         f"[{ticker}] Ingested {len(new_articles)} new articles "
@@ -185,6 +179,11 @@ async def ingest_watchlist():
 @app.on_event("startup")
 async def startup():
     """Run one ingestion cycle immediately, then start the scheduler."""
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+    if cache.connected:
+        print(f"[Cache] Redis connected at {redis_url}")
+    else:
+        print("[Cache] Redis unavailable — using in-memory fallback")
     await ingest_watchlist()
     scheduler = AsyncIOScheduler()
     scheduler.add_job(ingest_watchlist, "interval", seconds=POLL_INTERVAL)
@@ -201,7 +200,7 @@ def health():
     return {
         "status": "ok",
         "service": "news-ingestion-service",
-        "tickers_tracked": list(_store.keys()),
+        "tickers_tracked": cache.get_all_tickers(),
         "total_articles": len(all_articles),
         "unique_articles": len(unique_articles),
         "duplicate_mappings": len(all_articles) - len(unique_articles),
@@ -242,7 +241,7 @@ def get_articles(
 @app.get("/news/tickers")
 def list_tickers():
     """List all tickers currently in the store with their article counts."""
-    return {ticker: len(articles) for ticker, articles in _store.items()}
+    return cache.get_ticker_counts()
 
 
 @app.get("/news/sources/status")
@@ -294,11 +293,11 @@ async def get_by_ticker(
     """
     ticker = ticker.upper()
 
-    if refresh or ticker not in _store:
+    if refresh or not cache.has_ticker(ticker):
         print(f"[On-demand] Fetching {ticker}...")
         await ingest_ticker(ticker)
 
-    articles = _filter_articles(_store.get(ticker, []), content_type)
+    articles = _filter_articles(cache.get_articles(ticker, limit=0), content_type)
     if not articles:
         return []
 
@@ -323,13 +322,12 @@ async def trigger_ingest(ticker: str | None = None):
         await ingest_watchlist()
         return {
             "status": "ok",
-            "total_articles": sum(len(v) for v in _store.values()),
+            "total_articles": sum(cache.get_ticker_counts().values()),
         }
 
 
 @app.delete("/news/reset")
 def reset_store():
-    """Clear the in-memory store and dedup cache — useful for testing."""
-    _store.clear()
-    clear()
+    """Clear the article store and dedup cache — useful for testing."""
+    cache.clear()
     return {"status": "ok", "message": "Store and dedup cache cleared"}

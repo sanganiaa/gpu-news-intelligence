@@ -6,3 +6,4 @@ pandas==2.2.1
 python-dotenv==1.0.1
 pydantic==2.6.3
 apscheduler==3.10.4
+redis>=4.0.0
