@@ -1,26 +1,20 @@
 """
-FinBERT model loader and inference helpers.
-
-Device priority (controlled by DEVICE env var):
-  mps  → Apple Silicon GPU (M1/M2/M3)
-  cuda → NVIDIA GPU
-  cpu  → fallback
+FinBERT inference via HuggingFace Inference API.
+No local GPU or model weights required — authenticates with HF_TOKEN.
 """
 
 import os
 import time
-import torch
-from transformers import pipeline
+import httpx
 
+HF_TOKEN = os.getenv("HF_TOKEN", "")
 MODEL_NAME = os.getenv("MODEL_NAME", "ProsusAI/finbert")
-DEVICE_ENV = os.getenv("DEVICE", "cpu")
+_HF_API_URL = f"https://api-inference.huggingface.co/models/{MODEL_NAME}"
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "32"))
 
-_pipe = None
-_device: torch.device | None = None
+_initialized = False
 _load_time_ms: float = 0.0
 
-# Synthetic finance sentences used for benchmark warmup/timing
 _BENCH_SENTENCES = [
     "NVIDIA reports record quarterly revenue driven by AI chip demand.",
     "Federal Reserve signals potential rate cuts amid slowing inflation.",
@@ -33,49 +27,49 @@ _BENCH_SENTENCES = [
 ]
 
 
-def _resolve_device() -> torch.device:
-    if DEVICE_ENV == "mps":
-        if torch.backends.mps.is_available():
-            return torch.device("mps")
-        print("[Inference] MPS requested but not available — falling back to CPU")
-    elif DEVICE_ENV == "cuda":
-        if torch.cuda.is_available():
-            return torch.device("cuda")
-        print("[Inference] CUDA requested but not available — falling back to CPU")
-    return torch.device("cpu")
-
-
 def load_model() -> None:
-    global _pipe, _device, _load_time_ms
-    _device = _resolve_device()
-    t0 = time.time()
-    _pipe = pipeline(
-        "text-classification",
-        model=MODEL_NAME,
-        tokenizer=MODEL_NAME,
-        device=_device,
-        top_k=None,       # return all label scores, not just the top one
-        max_length=512,
-        truncation=True,
-    )
-    _load_time_ms = (time.time() - t0) * 1000
-    print(f"[Inference] {MODEL_NAME} loaded on {_device} in {_load_time_ms:.0f} ms")
+    global _initialized, _load_time_ms
+    if not HF_TOKEN:
+        raise RuntimeError("HF_TOKEN environment variable is not set")
+    _initialized = True
+    _load_time_ms = 0.0
+    print(f"[Inference] Using HuggingFace Inference API for {MODEL_NAME}")
 
 
 def is_loaded() -> bool:
-    return _pipe is not None
+    return _initialized
 
 
 def get_device_str() -> str:
-    return str(_device) if _device else DEVICE_ENV
+    return "huggingface-api"
 
 
 def get_load_time_ms() -> float:
     return _load_time_ms
 
 
+def _hf_post(payload: dict, max_retries: int = 3) -> list:
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    for attempt in range(max_retries):
+        with httpx.Client(timeout=60.0) as client:
+            resp = client.post(_HF_API_URL, json=payload, headers=headers)
+        if resp.status_code == 200:
+            return resp.json()
+        if resp.status_code == 503:
+            # Model is cold-starting on HF free tier — wait then retry
+            try:
+                wait = min(float(resp.json().get("estimated_time", 30)), 30.0)
+            except Exception:
+                wait = 30.0
+            print(f"[Inference] Model loading on HF, waiting {wait:.0f}s (attempt {attempt + 1}/{max_retries})")
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+    raise RuntimeError(f"HuggingFace Inference API failed after {max_retries} retries")
+
+
 def _parse_results(raw: list[dict]) -> tuple[str, float, dict[str, float]]:
-    """Convert a single pipeline output list into (label, confidence, probs)."""
+    """Convert a single API output list into (label, confidence, probs)."""
     probs = {r["label"].lower(): round(r["score"], 6) for r in raw}
     label = max(probs, key=probs.get)
     return label, probs[label], {
@@ -86,19 +80,16 @@ def _parse_results(raw: list[dict]) -> tuple[str, float, dict[str, float]]:
 
 
 def infer_single(text: str) -> dict:
-    """
-    Run FinBERT on one text. Returns sentiment, confidence, probabilities,
-    and wall-clock latency.
-    """
     if not is_loaded():
         raise RuntimeError("Model not loaded — call load_model() first")
 
     t0 = time.time()
-    raw = _pipe(text, max_length=512, truncation=True)
-    # top_k=None wraps single-text output in an extra list: [[{...}]] → [{...}]
+    raw = _hf_post({"inputs": text})
+    latency_ms = (time.time() - t0) * 1000
+
+    # API may wrap single-input response in an outer list
     if raw and isinstance(raw[0], list):
         raw = raw[0]
-    latency_ms = (time.time() - t0) * 1000
 
     label, confidence, probs = _parse_results(raw)
     return {
@@ -110,20 +101,18 @@ def infer_single(text: str) -> dict:
 
 
 def infer_batch(texts: list[str]) -> tuple[list[dict], float]:
-    """
-    Run FinBERT on a list of texts using GPU batching.
-    Returns (list of result dicts, total_latency_ms).
-    """
     if not is_loaded():
         raise RuntimeError("Model not loaded — call load_model() first")
 
     t0 = time.time()
-    batch_raw = _pipe(texts, batch_size=BATCH_SIZE, max_length=512, truncation=True)
+    raw_batch = _hf_post({"inputs": texts})
     total_ms = (time.time() - t0) * 1000
 
     per_item_ms = round(total_ms / max(len(texts), 1), 2)
     results = []
-    for raw in batch_raw:
+    for raw in raw_batch:
+        if raw and isinstance(raw[0], list):
+            raw = raw[0]
         label, confidence, probs = _parse_results(raw)
         results.append({
             "sentiment": label,
@@ -135,25 +124,21 @@ def infer_batch(texts: list[str]) -> tuple[list[dict], float]:
 
 
 def run_benchmark(warmup: int = 2, timed: int = 5) -> dict:
-    """
-    Warm up the model then time N batches over the benchmark sentences.
-    Returns throughput and latency percentiles.
-    """
     import statistics
 
     if not is_loaded():
         raise RuntimeError("Model not loaded — call load_model() first")
 
-    texts = _BENCH_SENTENCES * BATCH_SIZE  # fill a full batch
+    # Fill a batch-sized list by cycling the benchmark sentences
+    texts = (_BENCH_SENTENCES * ((BATCH_SIZE // len(_BENCH_SENTENCES)) + 1))[:BATCH_SIZE]
 
-    # Warmup passes (not timed)
     for _ in range(warmup):
-        _pipe(texts[:BATCH_SIZE], batch_size=BATCH_SIZE, max_length=512, truncation=True)
+        _hf_post({"inputs": texts})
 
     latencies_ms: list[float] = []
     for _ in range(timed):
         t0 = time.time()
-        _pipe(texts[:BATCH_SIZE], batch_size=BATCH_SIZE, max_length=512, truncation=True)
+        _hf_post({"inputs": texts})
         latencies_ms.append((time.time() - t0) * 1000)
 
     avg_ms = statistics.mean(latencies_ms)

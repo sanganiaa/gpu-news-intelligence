@@ -11,8 +11,6 @@ from .schema import (
     BenchmarkResult,
 )
 
-DEVICE = os.getenv("DEVICE", "cpu")
-
 app = FastAPI(title="Inference Engine", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
