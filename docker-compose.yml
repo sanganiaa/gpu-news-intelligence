@@ -22,12 +22,12 @@ services:
       - "5432:5432"
     environment:
       POSTGRES_DB: gpu_news
-      POSTGRES_USER: gpu_news
-      POSTGRES_PASSWORD: gpu_news
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gpu_news -d gpu_news"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gpu_news"]
       interval: 5s
       timeout: 3s
       retries: 10

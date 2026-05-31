@@ -1,10 +1,12 @@
 import json
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_db
@@ -31,7 +33,16 @@ app.add_middleware(
 
 @app.on_event("startup")
 def create_tables():
-    Base.metadata.create_all(bind=engine)
+    for attempt in range(10):
+        try:
+            Base.metadata.create_all(bind=engine)
+            break
+        except OperationalError as exc:
+            if attempt < 9:
+                print(f"[DB] Connection attempt {attempt + 1}/10 failed, retrying in 2s: {exc}")
+                time.sleep(2)
+            else:
+                raise
     inspector = inspect(engine)
     if "articles" in inspector.get_table_names():
         columns = {column["name"] for column in inspector.get_columns("articles")}
