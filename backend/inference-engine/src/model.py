@@ -9,7 +9,7 @@ import httpx
 
 HF_TOKEN = os.getenv("HF_TOKEN", "")
 MODEL_NAME = os.getenv("MODEL_NAME", "ProsusAI/finbert")
-_HF_API_URL = f"https://api-inference.huggingface.co/models/{MODEL_NAME}"
+_HF_API_URL = f"https://router.huggingface.co/hf-inference/models/{MODEL_NAME}"
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "32"))
 
 _initialized = False
