@@ -1,5 +1,5 @@
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from ..schema import Article
 from ..dedup import make_id, is_duplicate, mark_seen
 
@@ -72,7 +72,7 @@ async def fetch_edgar_8k(ticker: str) -> list[Article]:
 
     cik_stripped = cik.lstrip("0")
     articles = []
-    fetched_count = 0
+    total_8k = 0
 
     try:
         async with httpx.AsyncClient(timeout=15, headers=HEADERS) as client:
@@ -80,33 +80,52 @@ async def fetch_edgar_8k(ticker: str) -> list[Article]:
             data = response.json()
 
         filings = data.get("filings", {}).get("recent", {})
-        forms            = filings.get("form", [])
+        forms             = filings.get("form", [])
         accession_numbers = filings.get("accessionNumber", [])
-        filing_dates     = filings.get("filingDate", [])
-        primary_docs     = filings.get("primaryDocument", [])
-        fetched_count = sum(1 for form in forms if form == "8-K")
+        filing_dates      = filings.get("filingDate", [])
+        primary_docs      = filings.get("primaryDocument", [])
+
+        now     = datetime.now(timezone.utc)
+        cutoff  = now - timedelta(days=90)
+
+        # ── Date-filter pass ─────────────────────────────────────────────────
+        # Walk all 8-Ks first so we can log accurate counts before any dedup
+        # or per-ticker cap truncates the list.
+        filtered_old = 0
+        recent: list[tuple[int, str, datetime]] = []  # (index, date_str, parsed_dt)
 
         for i, form in enumerate(forms):
             if form != "8-K":
                 continue
+            total_8k += 1
+            date_str = filing_dates[i]
+            try:
+                parsed_dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            except Exception:
+                parsed_dt = now  # treat unparseable dates as current
 
-            accession        = accession_numbers[i]
+            if parsed_dt < cutoff:
+                filtered_old += 1
+            else:
+                recent.append((i, date_str, parsed_dt))
+
+        print(
+            f"[EDGAR] {ticker.upper()}: fetched={total_8k} total, "
+            f"{filtered_old} filtered (too old), "
+            f"{len(recent)} kept (within 90 days)"
+        )
+
+        # ── Article construction ──────────────────────────────────────────────
+        for i, date_str, published_dt in recent:
+            accession           = accession_numbers[i]
             accession_no_dashes = accession.replace("-", "")
-            primary_doc      = primary_docs[i]
-            filing_date_str  = filing_dates[i]
+            primary_doc         = primary_docs[i]
 
-            url = f"https://www.sec.gov/Archives/edgar/data/{cik_stripped}/{accession_no_dashes}/{primary_doc}"
+            url        = f"https://www.sec.gov/Archives/edgar/data/{cik_stripped}/{accession_no_dashes}/{primary_doc}"
             article_id = make_id(url)
 
             if is_duplicate(article_id):
                 continue
-
-            try:
-                published_dt = datetime.strptime(
-                    filing_date_str, "%Y-%m-%d"
-                ).replace(tzinfo=timezone.utc)
-            except Exception:
-                published_dt = datetime.now(timezone.utc)
 
             article = Article(
                 id=article_id,
@@ -114,11 +133,11 @@ async def fetch_edgar_8k(ticker: str) -> list[Article]:
                 tickers=[ticker.upper()],
                 source="sec_edgar",
                 content_type="sec_filing",
-                title=f"{ticker.upper()} 8-K Filing — {filing_date_str}",
+                title=f"{ticker.upper()} 8-K Filing — {date_str}",
                 summary=f"SEC 8-K filing. Accession: {accession}",
                 url=url,
                 published_at=published_dt,
-                ingested_at=datetime.now(timezone.utc),
+                ingested_at=now,
                 is_filing=True,
                 filing_type="8-K",
             )
@@ -129,8 +148,7 @@ async def fetch_edgar_8k(ticker: str) -> list[Article]:
                 break
 
     except Exception as e:
-        print(f"[EDGAR] {ticker.upper()}: fetched={fetched_count} saved={len(articles)} error={e}")
+        print(f"[EDGAR] {ticker.upper()}: fetched={total_8k} saved={len(articles)} error={e}")
         return articles
 
-    print(f"[EDGAR] {ticker.upper()}: fetched={fetched_count} saved={len(articles)}")
     return articles
