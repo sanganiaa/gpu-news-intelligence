@@ -14,6 +14,7 @@ import { getHealth, SERVICE_URLS } from '../api/client';
 import { fetchMetrics, fetchSignalAccuracy, fetchTickerHistory } from '../api/results';
 import { useInference } from '../hooks/useInference';
 import { useNews } from '../hooks/useNews';
+import { useRecentSignals } from '../hooks/useRecentSignals';
 import { useSignals } from '../hooks/useSignals';
 
 const SERVICES = [
@@ -91,13 +92,36 @@ function newestTimestamp(...values) {
   return new Date(Math.max(...timestamps)).toISOString();
 }
 
+const LS_KEY = 'recentTickers';
+const MAX_RECENT = 10;
+
+function loadRecentFromStorage() {
+  try {
+    const stored = localStorage.getItem(LS_KEY);
+    const parsed = stored ? JSON.parse(stored) : null;
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed.slice(0, MAX_RECENT);
+  } catch {}
+  return ['NVDA'];
+}
+
 export default function Dashboard() {
-  const [ticker, setTicker] = useState('NVDA');
+  const [ticker, setTicker] = useState(() => loadRecentFromStorage()[0]);
+  const [recentTickers, setRecentTickers] = useState(loadRecentFromStorage);
   const [activeTab, setActiveTab] = useState('operator');
   const [drilldownTicker, setDrilldownTicker] = useState(null);
   const news = useNews(ticker);
   const signals = useSignals(ticker);
   const inference = useInference(news.articles);
+  const { signalsByTicker, loading: recentLoading, error: recentError } = useRecentSignals(recentTickers);
+
+  function handleTickerChange(newTicker) {
+    setTicker(newTicker);
+    setRecentTickers(prev => {
+      const next = [newTicker, ...prev.filter(t => t !== newTicker)].slice(0, MAX_RECENT);
+      try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
   const [serviceState, setServiceState] = useState({ services: [], loading: true });
   const [resultsState, setResultsState] = useState({
     history: null,
@@ -371,7 +395,7 @@ export default function Dashboard() {
     <div className="app">
       <TopBar healthyCount={healthyCount} serviceCount={SERVICES.length} lastUpdatedAt={lastUpdatedAt} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <SearchBar value={ticker} onChange={setTicker} />
+        <SearchBar value={ticker} onChange={handleTickerChange} />
         <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
           Showing backend data for <strong>{ticker}</strong>
           {(news.error || signals.error || resultsState.error) && ' · partial data'}
@@ -420,7 +444,14 @@ export default function Dashboard() {
               onTickerClick={openTickerDrilldown}
               lastRefreshed={news.updatedAt}
             />
-            <ActiveSignals ticker={ticker} signals={signals.signals} loading={signals.loading} error={signals.error} onTickerClick={openTickerDrilldown} />
+            <ActiveSignals
+              ticker={ticker}
+              recentTickers={recentTickers}
+              signalsByTicker={signalsByTicker}
+              loading={recentLoading}
+              error={recentError}
+              onTickerClick={openTickerDrilldown}
+            />
           </div>
           <FilingsFeed articles={[...(news.latest || []), ...enrichedArticles]} loading={news.loading || resultsState.loading} error={news.error} />
           {drilldownTicker && (
