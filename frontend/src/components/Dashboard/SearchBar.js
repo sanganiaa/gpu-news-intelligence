@@ -1,6 +1,41 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useEffect, useState } from 'react';
 
-const WATCHLIST = ['NVDA', 'AAPL', 'MSFT', 'META', 'TSLA', 'AMZN', 'AMD', 'SNOW', 'NBIS', 'PLTR', 'ARM', 'SMCI'];
+const TICKER_MAP = {
+  NVDA:  'Nvidia',
+  AAPL:  'Apple Inc.',
+  MSFT:  'Microsoft',
+  META:  'Meta Platforms',
+  TSLA:  'Tesla',
+  AMZN:  'Amazon',
+  AMD:   'AMD',
+  SNOW:  'Snowflake',
+  PLTR:  'Palantir',
+  SMCI:  'Super Micro Computer',
+  INTC:  'Intel',
+  QCOM:  'Qualcomm',
+  ARM:   'ARM Holdings',
+  AVGO:  'Broadcom',
+  TSM:   'TSMC',
+  ASML:  'ASML',
+  ORCL:  'Oracle',
+  CRM:   'Salesforce',
+  ADBE:  'Adobe',
+  NOW:   'ServiceNow',
+  GOOGL: 'Alphabet',
+  NFLX:  'Netflix',
+  UBER:  'Uber',
+  SPOT:  'Spotify',
+  AMGN:  'Amgen',
+  DIS:   'Disney',
+  BABA:  'Alibaba',
+  V:     'Visa',
+  MA:    'Mastercard',
+};
+
+// Pre-sorted list of [ticker, name] pairs for stable ordering
+const ALL_TICKERS = Object.entries(TICKER_MAP).sort(([a], [b]) => a.localeCompare(b));
+
+const MAX_RESULTS = 8;
 
 const styles = {
   wrap: { position: 'relative', width: '100%', maxWidth: 380 },
@@ -14,38 +49,78 @@ const styles = {
     color: 'var(--text-primary)',
     outline: 'none',
     letterSpacing: '0.05em',
+    boxSizing: 'border-box',
   },
-  icon: { position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-hint)', fontSize: 15, pointerEvents: 'none' },
+  icon: {
+    position: 'absolute', left: 14, top: '50%',
+    transform: 'translateY(-50%)',
+    color: 'var(--text-hint)', fontSize: 15, pointerEvents: 'none',
+  },
   dropdown: {
     position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
     background: 'var(--surface)',
     border: '0.5px solid var(--border-strong)',
     borderRadius: 'var(--radius-md)',
     zIndex: 100, overflow: 'hidden',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
   },
   item: {
-    padding: '9px 16px', fontFamily: 'var(--font-mono)',
-    fontSize: 13, fontWeight: 500, letterSpacing: '0.05em',
-    cursor: 'pointer', color: 'var(--text-primary)',
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    padding: '9px 16px',
+    fontFamily: 'var(--font-mono)',
+    fontSize: 13, fontWeight: 500,
+    letterSpacing: '0.04em',
+    cursor: 'pointer',
+    color: 'var(--text-primary)',
+    display: 'flex', alignItems: 'center', gap: 8,
+    userSelect: 'none',
   },
-  badge: { fontSize: 10, color: 'var(--text-hint)', background: 'var(--surface-2)', padding: '2px 6px', borderRadius: 4 },
+  ticker: { minWidth: 48, color: 'var(--text-primary)' },
+  sep:    { color: 'var(--text-hint)', fontWeight: 400 },
+  name:   { color: 'var(--text-secondary)', fontWeight: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  searchMore: {
+    padding: '9px 16px',
+    fontFamily: 'var(--font-mono)',
+    fontSize: 13,
+    cursor: 'pointer',
+    color: 'var(--blue)',
+    borderTop: '0.5px solid var(--border)',
+    userSelect: 'none',
+  },
 };
 
 export default function SearchBar({ value, onChange }) {
-  const [query, setQuery] = useState(value || '');
-  const [open, setOpen] = useState(false);
+  const [query, setQuery]         = useState(value || '');
+  const [open, setOpen]           = useState(false);
+  const [activeIdx, setActiveIdx] = useState(-1);
   const ref = useRef();
 
-  const filtered = query.length >= 1
-    ? WATCHLIST.filter(t => t.startsWith(query.toUpperCase()))
-    : WATCHLIST;
-
+  // Close on outside click
   useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  // Reset active index whenever query or open state changes
+  useEffect(() => { setActiveIdx(-1); }, [query, open]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim();
+    if (!q) return ALL_TICKERS.slice(0, MAX_RESULTS);
+    const upper = q.toUpperCase();
+    const lower = q.toLowerCase();
+    const matches = ALL_TICKERS.filter(([ticker, name]) =>
+      ticker.startsWith(upper) || name.toLowerCase().includes(lower)
+    );
+    return matches.slice(0, MAX_RESULTS);
+  }, [query]);
+
+  // Whether the current query exactly matches a known ticker or company
+  const isKnown = query.trim().length >= 1 && filtered.some(
+    ([t]) => t === query.trim().toUpperCase()
+  );
 
   function select(ticker) {
     setQuery(ticker);
@@ -53,11 +128,35 @@ export default function SearchBar({ value, onChange }) {
     setOpen(false);
   }
 
+  function handleChange(e) {
+    setQuery(e.target.value);
+    setOpen(true);
+  }
+
   function handleKey(e) {
-    if (e.key === 'Enter' && query.length >= 1) {
-      select(query.toUpperCase());
+    if (!open) { if (e.key === 'ArrowDown') setOpen(true); return; }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIdx(i => Math.min(i + 1, filtered.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIdx(i => Math.max(i - 1, -1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIdx >= 0 && filtered[activeIdx]) {
+        select(filtered[activeIdx][0]);
+      } else if (filtered.length > 0) {
+        select(filtered[0][0]);
+      } else if (query.trim().length >= 1) {
+        select(query.trim().toUpperCase());
+      }
+    } else if (e.key === 'Escape') {
+      setOpen(false);
     }
   }
+
+  const showSearchMore = query.trim().length >= 2 && !isKnown;
 
   return (
     <div style={styles.wrap} ref={ref}>
@@ -65,29 +164,39 @@ export default function SearchBar({ value, onChange }) {
       <input
         style={styles.input}
         value={query}
-        placeholder="Search any ticker..."
-        onChange={e => { setQuery(e.target.value.toUpperCase()); setOpen(true); }}
+        placeholder="Search ticker or company..."
+        onChange={handleChange}
         onFocus={() => setOpen(true)}
         onKeyDown={handleKey}
+        autoComplete="off"
+        spellCheck={false}
       />
-      {open && filtered.length > 0 && (
+      {open && (filtered.length > 0 || showSearchMore) && (
         <div style={styles.dropdown}>
-          {filtered.map((t, i) => (
+          {filtered.map(([ticker, name], i) => (
             <div
-              key={t}
-              style={{ ...styles.item, background: i % 2 === 0 ? 'transparent' : 'var(--surface-2)' }}
-              onMouseDown={() => select(t)}
+              key={ticker}
+              style={{
+                ...styles.item,
+                background: i === activeIdx
+                  ? 'var(--surface-2)'
+                  : i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
+              }}
+              onMouseEnter={() => setActiveIdx(i)}
+              onMouseLeave={() => setActiveIdx(-1)}
+              onMouseDown={() => select(ticker)}
             >
-              {t}
-              {WATCHLIST.includes(t) && <span style={styles.badge}>watchlist</span>}
+              <span style={styles.ticker}>{ticker}</span>
+              <span style={styles.sep}>—</span>
+              <span style={styles.name}>{name}</span>
             </div>
           ))}
-          {query.length >= 2 && !WATCHLIST.includes(query) && (
+          {showSearchMore && (
             <div
-              style={{ ...styles.item, color: 'var(--blue)', borderTop: '0.5px solid var(--border)' }}
-              onMouseDown={() => select(query)}
+              style={styles.searchMore}
+              onMouseDown={() => select(query.trim().toUpperCase())}
             >
-              Search "{query}" →
+              Search "{query.trim().toUpperCase()}" →
             </div>
           )}
         </div>
