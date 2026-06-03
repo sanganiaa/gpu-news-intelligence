@@ -8,6 +8,15 @@ export function fetchSignal(ticker, { refresh = false } = {}) {
   return request('signals', `/signals/${ticker}`, { params: { refresh }, timeoutMs: 30000 });
 }
 
+// Triggers a full ingest cycle for a single ticker on the backend and returns the
+// resulting signal. Can take 10–30 s for a cold ticker; use a generous timeout.
+export function ingestTicker(ticker) {
+  return request('signals', `/signals/ingest/${ticker}`, {
+    method: 'POST',
+    timeoutMs: 60000,
+  });
+}
+
 export function generateSignal(payload) {
   return request('signals', '/signals/generate', {
     method: 'POST',

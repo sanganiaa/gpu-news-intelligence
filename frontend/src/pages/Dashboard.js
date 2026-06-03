@@ -112,7 +112,7 @@ export default function Dashboard() {
   const news = useNews(ticker);
   const signals = useSignals(ticker);
   const inference = useInference(news.articles);
-  const { signalsByTicker, loading: recentLoading, error: recentError } = useRecentSignals(recentTickers);
+  const { signalsByTicker, ingestStatusByTicker, loading: recentLoading, error: recentError } = useRecentSignals(recentTickers);
 
   function handleTickerChange(newTicker) {
     setTicker(newTicker);
@@ -448,6 +448,7 @@ export default function Dashboard() {
               ticker={ticker}
               recentTickers={recentTickers}
               signalsByTicker={signalsByTicker}
+              ingestStatusByTicker={ingestStatusByTicker}
               loading={recentLoading}
               error={recentError}
               onTickerClick={openTickerDrilldown}

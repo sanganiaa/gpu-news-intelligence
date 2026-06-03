@@ -15,10 +15,35 @@ function formatTime(value) {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+// Minimal CSS-only pulsing dot — no external dependency needed.
+function IngestSpinner() {
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        width: 6, height: 6,
+        borderRadius: '50%',
+        background: 'var(--blue, #3B82F6)',
+        animation: 'ingest-pulse 1.2s ease-in-out infinite',
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
+// Inject keyframes once into the document head (idempotent).
+if (typeof document !== 'undefined' && !document.getElementById('ingest-pulse-style')) {
+  const style = document.createElement('style');
+  style.id = 'ingest-pulse-style';
+  style.textContent = '@keyframes ingest-pulse { 0%,100%{opacity:.25} 50%{opacity:1} }';
+  document.head.appendChild(style);
+}
+
 export default function ActiveSignals({
   ticker,
   recentTickers = [],
   signalsByTicker = {},
+  ingestStatusByTicker = {},
   loading,
   error,
   onTickerClick,
@@ -61,17 +86,21 @@ export default function ActiveSignals({
         const isSelected = t === ticker;
 
         if (!s) {
+          const ingestStatus = ingestStatusByTicker[t];
+          const isIngesting  = ingestStatus === 'loading';
+          const isIngestErr  = ingestStatus === 'error';
+
           return (
             <div
               key={t}
               style={{
-                display: 'grid', gridTemplateColumns: '44px 46px 1fr 38px', alignItems: 'center', gap: 8,
+                display: 'grid', gridTemplateColumns: '44px 1fr', alignItems: 'center', gap: 8,
                 padding: '6px 0', borderBottom: '0.5px solid var(--border)',
                 fontSize: 12,
                 background: isSelected ? 'var(--surface-2)' : 'transparent',
                 borderRadius: isSelected ? 4 : 0,
                 paddingLeft: isSelected ? 6 : 0,
-                opacity: 0.5,
+                opacity: isIngestErr ? 0.6 : 0.7,
               }}
             >
               <button
@@ -81,8 +110,16 @@ export default function ActiveSignals({
               >
                 {t}
               </button>
-              <span style={{ fontSize: 10, color: 'var(--text-hint)' }}>—</span>
-              <span style={{ fontSize: 10, color: 'var(--text-hint)' }}>fetching…</span>
+              {isIngesting ? (
+                <span style={{ fontSize: 10, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <IngestSpinner />
+                  Fetching data for {t}…
+                </span>
+              ) : isIngestErr ? (
+                <span style={{ fontSize: 10, color: 'var(--amber, #BA7517)' }}>Data unavailable</span>
+              ) : (
+                <span style={{ fontSize: 10, color: 'var(--text-hint)' }}>fetching…</span>
+              )}
             </div>
           );
         }
