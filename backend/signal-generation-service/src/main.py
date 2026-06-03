@@ -325,8 +325,10 @@ async def _ingest_all_signals(source: str) -> IngestAllResult:
     )
 
     results: list[IngestTickerResult] = []
+    total = len(tickers)
     async with httpx.AsyncClient() as client:
-        for ticker in tickers:
+        for i, ticker in enumerate(tickers, 1):
+            logger.info("[Scheduler] Ingesting %s (%d/%d)...", ticker, i, total)
             try:
                 signal = await _ingest_ticker_signal(ticker, client)
                 results.append(IngestTickerResult(
@@ -514,6 +516,10 @@ async def startup():
         "[SignalsIngest] Scheduled all-ticker ingestion every %ss",
         SIGNAL_INGEST_INTERVAL_SECONDS,
     )
+    # Fire one cycle immediately so signals are ready without waiting 60 min.
+    # create_task() returns instantly — startup is not blocked.
+    asyncio.create_task(_ingest_all_signals("startup"))
+    logger.info("[SignalsIngest] Initial ingestion cycle started in background")
 
 
 @app.on_event("shutdown")
