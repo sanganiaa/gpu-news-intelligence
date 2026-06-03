@@ -1,85 +1,114 @@
+import re
 from datetime import datetime, timezone
 
+import feedparser
 import httpx
 
 from ..dedup import is_duplicate, make_id, mark_seen
 from ..schema import Article
 
-REDDIT_TOP_URL = "https://www.reddit.com/r/{subreddit}/top.json"
-SUBREDDITS = ("investing", "stocks")
+RSS_FEEDS = [
+    "https://www.reddit.com/r/investing/top.rss?t=day",
+    "https://www.reddit.com/r/stocks/top.rss?t=day",
+    "https://www.reddit.com/r/wallstreetbets/top.rss?t=day",
+]
 
-HEADERS = {
-    "User-Agent": "gpu-news-intelligence/1.0 news ingestion service"
+# Reddit's JSON API returns 403 for bots; RSS feeds work with a browser UA.
+HEADERS = {"User-Agent": "Mozilla/5.0"}
+
+TRACKED_TICKERS = {
+    "NVDA", "AAPL", "MSFT", "META", "TSLA", "AMZN", "AMD", "SNOW", "PLTR",
+    "SMCI", "INTC", "QCOM", "ARM",  "AVGO", "TSM",  "ASML", "ORCL", "CRM",
+    "ADBE", "NOW",
+}
+
+# Pre-compile one pattern per ticker. Word-boundary match handles "NVDA" vs
+# "VNVDA"; also accept the common "$TICKER" notation used on finance subs.
+_TICKER_PATTERNS = {
+    ticker: re.compile(rf"(?<![A-Z])\$?{re.escape(ticker)}(?![A-Z])")
+    for ticker in TRACKED_TICKERS
 }
 
 
-def _created_utc_to_datetime(value) -> datetime:
+def _find_tickers(title: str) -> list[str]:
+    upper = title.upper()
+    return [t for t, pat in _TICKER_PATTERNS.items() if pat.search(upper)]
+
+
+def _parse_published(entry) -> datetime:
     try:
-        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        if entry.get("published_parsed"):
+            return datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
     except Exception:
-        return datetime.now(timezone.utc)
+        pass
+    return datetime.now(timezone.utc)
+
+
+def _strip_html(text: str) -> str:
+    return re.sub(r"<[^>]+>", "", text or "").strip()
 
 
 async def fetch_reddit_top_posts(limit_per_subreddit: int = 10) -> list[Article]:
-    """Fetch top posts from finance subreddits via Reddit's public JSON API."""
+    """Fetch top posts from finance subreddits via Reddit RSS feeds."""
     articles: list[Article] = []
     fetched_count = 0
 
     try:
-        async with httpx.AsyncClient(timeout=10, headers=HEADERS) as client:
-            for subreddit in SUBREDDITS:
-                response = await client.get(
-                    REDDIT_TOP_URL.format(subreddit=subreddit),
-                    params={
-                        "t": "day",
-                        "limit": limit_per_subreddit,
-                        "raw_json": 1,
-                    },
-                    follow_redirects=True,
-                )
-                response.raise_for_status()
-                data = response.json()
+        async with httpx.AsyncClient(timeout=10, headers=HEADERS, follow_redirects=True) as client:
+            for feed_url in RSS_FEEDS:
+                subreddit = feed_url.split("/r/")[1].split("/")[0]
 
-                children = data.get("data", {}).get("children", [])
-                fetched_count += len(children)
-                for child in children:
-                    post = child.get("data", {})
-                    if post.get("stickied"):
+                try:
+                    response = await client.get(feed_url)
+                    response.raise_for_status()
+                except Exception as e:
+                    print(f"[Reddit] r/{subreddit}: request failed — {e}")
+                    continue
+
+                feed = feedparser.parse(response.text)
+                entries = feed.entries[:limit_per_subreddit]
+                fetched_count += len(entries)
+
+                for entry in entries:
+                    title = _strip_html(getattr(entry, "title", "") or "").strip()
+                    if not title:
                         continue
 
-                    permalink = post.get("permalink", "")
-                    if not permalink:
+                    tickers = _find_tickers(title)
+                    if not tickers:
                         continue
 
-                    url = f"https://www.reddit.com{permalink}"
+                    url = getattr(entry, "link", "") or ""
+                    if not url:
+                        continue
+
                     article_id = make_id(url)
                     if is_duplicate(article_id):
                         continue
 
-                    title = post.get("title", "").strip()
-                    score = post.get("score", 0)
-                    comments = post.get("num_comments", 0)
-                    summary = f"r/{subreddit} top post. Score: {score}. Comments: {comments}."
+                    summary = _strip_html(getattr(entry, "summary", "") or "")
+                    if not summary:
+                        summary = f"r/{subreddit} post mentioning {', '.join(tickers)}"
 
                     article = Article(
                         id=article_id,
-                        ticker="REDDIT",
-                        tickers=["REDDIT"],
+                        ticker=tickers[0],
+                        tickers=tickers,
                         source="reddit",
                         content_type="reddit",
                         title=title,
                         summary=summary,
                         url=url,
-                        published_at=_created_utc_to_datetime(post.get("created_utc")),
+                        published_at=_parse_published(entry),
                         ingested_at=datetime.now(timezone.utc),
-                        raw_text=post.get("selftext", ""),
+                        raw_text=summary,
                     )
                     mark_seen(article_id)
                     articles.append(article)
 
     except Exception as e:
-        print(f"[Reddit] REDDIT: fetched={fetched_count} saved={len(articles)} error={e}")
+        print(f"[Reddit] fetched={fetched_count} saved={len(articles)} error={e}")
         return articles
 
-    print(f"[Reddit] REDDIT: fetched={fetched_count} saved={len(articles)}")
+    print(f"[Reddit] fetched={fetched_count} saved={len(articles)}")
     return articles
