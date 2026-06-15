@@ -113,16 +113,19 @@ def store_articles(articles: list[Article]):
 async def ingest_ticker(ticker: str) -> list[Article]:
     """
     Fetch from all 3 sources for a single ticker.
+    Passes last_fetched_at as a cutoff so each cycle only pulls new content.
     Returns only newly ingested articles (dedup already applied inside each source).
     """
     ticker = ticker.upper()
+    since = cache.get_last_fetched(ticker)
 
-    yahoo   = await fetch_yahoo_rss(ticker)
-    finnhub = await fetch_finnhub(ticker)
+    yahoo   = await fetch_yahoo_rss(ticker, since=since)
+    finnhub = await fetch_finnhub(ticker, since=since)
     edgar   = await fetch_edgar_8k(ticker)
 
     new_articles = yahoo + finnhub + edgar
     store_articles(new_articles)
+    cache.set_last_fetched(ticker)
 
     print(f"[{ticker}] Total: {len(new_articles)} new articles")
     return new_articles
@@ -205,6 +208,12 @@ def get_articles(
 @app.get("/news/tickers")
 def list_tickers():
     """List all tickers currently in the store with their article counts."""
+    return cache.get_ticker_counts()
+
+
+@app.get("/news/all/counts")
+def all_counts():
+    """Return article counts per ticker for all tracked tickers."""
     return cache.get_ticker_counts()
 
 

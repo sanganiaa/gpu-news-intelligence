@@ -4,6 +4,12 @@ export function fetchTopPicks(limit = 12) {
   return request('signals', '/signals/top-picks', { params: { limit }, timeoutMs: 30000 });
 }
 
+// Returns all 10 default-ticker signals in one round-trip.
+// Shape: { "NVDA": Signal, "AAPL": Signal, ... } (only tickers with a cached signal are included)
+export function fetchAllSignals() {
+  return request('signals', '/signals/all', { timeoutMs: 15000 });
+}
+
 export function fetchSignal(ticker, { refresh = false } = {}) {
   return request('signals', `/signals/${ticker}`, { params: { refresh }, timeoutMs: 30000 });
 }

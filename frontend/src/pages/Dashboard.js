@@ -32,15 +32,23 @@ async function fetchInferenceHealthRaw() {
 }
 
 const LS_KEY = 'recentTickers';
-const MAX_RECENT = 10;
+const MAX_RECENT = 20; // room for recently-searched tickers on top of the 10 defaults
+
+const FRONTEND_DEFAULT_TICKERS = [
+  'NVDA', 'AAPL', 'MSFT', 'META', 'TSLA', 'AMZN', 'AMD', 'GOOGL', 'NFLX', 'PLTR',
+];
 
 function loadRecentFromStorage() {
   try {
     const stored = localStorage.getItem(LS_KEY);
     const parsed = stored ? JSON.parse(stored) : null;
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed.slice(0, MAX_RECENT);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      // Keep user's recently-searched order, then append any defaults not already present.
+      const merged = [...new Set([...parsed, ...FRONTEND_DEFAULT_TICKERS])];
+      return merged.slice(0, MAX_RECENT);
+    }
   } catch {}
-  return ['NVDA'];
+  return [...FRONTEND_DEFAULT_TICKERS];
 }
 
 export default function Dashboard() {
@@ -56,9 +64,10 @@ export default function Dashboard() {
     const t = newTicker.toUpperCase();
     setTicker(t);
     setRecentTickers(prev => {
-      const next = [t, ...prev.filter(x => x !== t)].slice(0, MAX_RECENT);
-      try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch {}
-      return next;
+      // User-searched ticker goes to the top; defaults are always kept at the end.
+      const merged = [...new Set([t, ...prev, ...FRONTEND_DEFAULT_TICKERS])].slice(0, MAX_RECENT);
+      try { localStorage.setItem(LS_KEY, JSON.stringify(merged)); } catch {}
+      return merged;
     });
   }
 

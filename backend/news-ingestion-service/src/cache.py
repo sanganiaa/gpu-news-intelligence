@@ -1,5 +1,6 @@
 import os
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from .schema import Article
@@ -15,6 +16,7 @@ class RedisCache:
         self._redis = None
         self._mem_articles: dict[str, dict[str, Article]] = {}  # ticker -> {id -> Article}
         self._mem_dedup: set[str] = set()
+        self._mem_last_fetched: dict[str, datetime] = {}
 
         try:
             import redis as _redis_lib
@@ -156,6 +158,28 @@ class RedisCache:
             self._redis.delete("dedup:seen")
         else:
             self._mem_dedup.clear()
+
+    # ── Last-fetched tracking ─────────────────────────────────────────────────
+
+    def get_last_fetched(self, ticker: str) -> datetime | None:
+        """Return the UTC datetime of the last successful fetch for this ticker."""
+        if self._redis:
+            val = self._redis.get(f"last_fetched:{ticker}")
+            if val:
+                try:
+                    return datetime.fromisoformat(val)
+                except Exception:
+                    return None
+            return None
+        return self._mem_last_fetched.get(ticker)
+
+    def set_last_fetched(self, ticker: str, ts: datetime | None = None) -> None:
+        """Record a successful fetch timestamp for this ticker."""
+        ts = ts or datetime.now(timezone.utc)
+        if self._redis:
+            self._redis.set(f"last_fetched:{ticker}", ts.isoformat())
+        else:
+            self._mem_last_fetched[ticker] = ts
 
     def clear(self):
         self.clear_articles()

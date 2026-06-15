@@ -1,6 +1,7 @@
 import feedparser
 import httpx
 from datetime import datetime, timezone
+from typing import Optional
 from urllib.parse import quote_plus
 from ..schema import Article
 from ..dedup import make_id, is_duplicate, mark_seen
@@ -18,8 +19,12 @@ HEADERS = {
 }
 
 
-async def fetch_yahoo_rss(ticker: str) -> list[Article]:
-    """Fetch Google News RSS stories for a ticker (Yahoo Finance RSS returns 429)."""
+async def fetch_yahoo_rss(ticker: str, since: Optional[datetime] = None) -> list[Article]:
+    """Fetch Google News RSS stories for a ticker (Yahoo Finance RSS returns 429).
+
+    If *since* is provided, articles published at or before that timestamp are
+    skipped so each cycle only processes genuinely new content.
+    """
     ticker = ticker.upper()
     articles: list[Article] = []
     fetched_count = 0
@@ -37,6 +42,13 @@ async def fetch_yahoo_rss(ticker: str) -> list[Article]:
             parsed = feedparser.parse(response.text)
             entries = list(parsed.entries or [])
             fetched_count = len(entries)
+
+            # Filter to articles newer than the last successful fetch.
+            if since:
+                def _entry_dt(entry) -> datetime:
+                    p = entry.get("published_parsed")
+                    return datetime(*p[:6], tzinfo=timezone.utc) if p else datetime.now(timezone.utc)
+                entries = [e for e in entries if _entry_dt(e) > since]
 
             for entry in entries[:MAX_ARTICLES]:
                 title = entry.get("title", "")

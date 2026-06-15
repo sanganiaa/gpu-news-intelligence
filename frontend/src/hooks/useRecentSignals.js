@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchSignal, ingestTicker } from '../api/signals';
+import { fetchAllSignals, fetchSignal, ingestTicker } from '../api/signals';
 
-const POLL_MS = 30000;
+const POLL_MS = 10000; // 10 s — matches the 2-minute backend cycle with fast UI refresh
 
-// Tickers whose signals are already ingested by the backend scheduler —
-// no on-demand ingest needed for these.
+// Tickers the backend scheduler handles automatically.
+// Non-default tickers need an on-demand ingest POST before their first signal fetch.
 const DEFAULT_TICKERS = new Set([
   'NVDA', 'AAPL', 'MSFT', 'META', 'TSLA',
   'AMZN', 'AMD',  'GOOGL', 'NFLX', 'PLTR',
@@ -29,29 +29,42 @@ function normalizeSignal(signal) {
 }
 
 // Fetches and polls signals for an ordered list of tickers.
-// For tickers not in DEFAULT_TICKERS, automatically triggers a backend ingest
-// before the first poll so cold tickers get data immediately.
+//
+// On mount: calls /signals/all to bulk-load all 10 default signals instantly.
+// Every 10 s: re-calls /signals/all for defaults + individual GETs for any
+//             non-default tickers in the list.
+// Non-default tickers automatically trigger an on-demand ingest POST so cold
+// tickers get data without waiting for the next scheduler cycle.
 //
 // Returns { signalsByTicker, ingestStatusByTicker, loading, error }.
-// ingestStatusByTicker[ticker] is:
-//   'loading'  — ingest POST in flight
-//   'error'    — ingest POST failed (signal service unavailable or no articles found)
-//   null       — done (or not needed)
 export function useRecentSignals(tickers) {
   const [signalsByTicker,      setSignalsByTicker]      = useState({});
   const [ingestStatusByTicker, setIngestStatusByTicker] = useState({});
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
 
-  // Stable key so the polling effect re-runs only when the ticker list changes.
   const tickersKey = tickers.join(',');
+  const ingestedRef   = useRef(new Set());
+  const pollInFlight  = useRef(false);
 
-  // Tracks which non-default tickers have already had an ingest triggered this
-  // session so we never fire duplicate POSTs.
-  const ingestedRef = useRef(new Set());
-  const pollInFlight = useRef(false);
-
-  // ── Polling effect ───────────────────────────────────────────────────────────
+  // ── One-time bulk load on mount ──────────────────────────────────────────────
+  useEffect(() => {
+    fetchAllSignals()
+      .then(allSignals => {
+        if (allSignals && typeof allSignals === 'object') {
+          setSignalsByTicker(prev => {
+            const next = { ...prev };
+            Object.entries(allSignals).forEach(([t, signal]) => {
+              if (signal) next[t] = normalizeSignal(signal);
+            });
+            return next;
+          });
+        }
+      })
+      .catch(() => {}) // silent: polling below will fill gaps
+      .finally(() => setLoading(false));
+  }, []); 
+  // ── Polling effect (every 10 s) ───────────────────────────────────────────────
   useEffect(() => {
     if (!tickers.length) {
       setLoading(false);
@@ -59,42 +72,51 @@ export function useRecentSignals(tickers) {
     }
 
     let cancelled = false;
+    const nonDefaults = tickers.filter(t => !DEFAULT_TICKERS.has(t));
 
     async function fetchAll() {
       if (pollInFlight.current) return;
       pollInFlight.current = true;
       try {
-        const results = await Promise.allSettled(tickers.map(t => fetchSignal(t)));
-        if (cancelled) return;
+        // One call for the 10 defaults + individual calls for non-default tickers.
+        const [allResult, ...nonDefaultResults] = await Promise.allSettled([
+          fetchAllSignals(),
+          ...nonDefaults.map(t => fetchSignal(t)),
+        ]);
 
-        const firstErr = results.find(r => r.status === 'rejected');
-        setError(firstErr ? firstErr.reason : null);
+        if (cancelled) return;
 
         setSignalsByTicker(prev => {
           const next = { ...prev };
-          results.forEach((r, i) => {
+          if (allResult.status === 'fulfilled' && allResult.value && typeof allResult.value === 'object') {
+            Object.entries(allResult.value).forEach(([t, signal]) => {
+              if (signal) next[t] = normalizeSignal(signal);
+            });
+          }
+          nonDefaultResults.forEach((r, i) => {
             if (r.status === 'fulfilled' && r.value) {
-              next[tickers[i]] = normalizeSignal(r.value);
+              next[nonDefaults[i]] = normalizeSignal(r.value);
             }
           });
           return next;
         });
+
+        const firstErr = [allResult, ...nonDefaultResults].find(r => r.status === 'rejected');
+        setError(firstErr ? firstErr.reason : null);
       } finally {
         pollInFlight.current = false;
         if (!cancelled) setLoading(false);
       }
     }
 
-    setLoading(true);
     fetchAll();
     const id = setInterval(fetchAll, POLL_MS);
     return () => {
       cancelled = true;
       clearInterval(id);
     };
-  }, [tickersKey]); // tickersKey is a stable string derived from tickers
-
-  // ── On-demand ingest effect ──────────────────────────────────────────────────
+  }, [tickersKey]); 
+  // ── On-demand ingest for non-default tickers ─────────────────────────────────
   useEffect(() => {
     const toIngest = tickers.filter(
       t => !DEFAULT_TICKERS.has(t) && !ingestedRef.current.has(t),
@@ -107,8 +129,6 @@ export function useRecentSignals(tickers) {
 
       ingestTicker(t)
         .then(signal => {
-          // Update signal immediately from the ingest response — no need to wait
-          // for the next poll cycle.
           if (signal) {
             setSignalsByTicker(prev => ({ ...prev, [t]: normalizeSignal(signal) }));
           }
@@ -118,7 +138,6 @@ export function useRecentSignals(tickers) {
           setIngestStatusByTicker(prev => ({ ...prev, [t]: 'error' }));
         });
     });
-  }, [tickersKey]); // tickersKey is a stable string derived from tickers
-
+  }, [tickersKey]); 
   return { signalsByTicker, ingestStatusByTicker, loading, error };
 }

@@ -20,7 +20,7 @@ CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.65"))
 # Exponential decay rate per hour — half-life ≈ 7h at 0.1
 DECAY_RATE = float(os.getenv("DECAY_RATE", "0.1"))
 SIGNAL_TTL_SECONDS = int(os.getenv("SIGNAL_TTL_SECONDS", "300"))
-SIGNAL_INGEST_INTERVAL_SECONDS = int(os.getenv("SIGNAL_INGEST_INTERVAL_SECONDS", "3600"))
+SIGNAL_INGEST_INTERVAL_SECONDS = int(os.getenv("SIGNAL_INGEST_INTERVAL_SECONDS", "120"))
 
 DEFAULT_TICKERS = [
     "NVDA", "AAPL", "MSFT", "META", "TSLA",
@@ -29,6 +29,31 @@ DEFAULT_TICKERS = [
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("signal-generation-service")
+
+# ── Optional Redis client for last_fetched_at tracking ────────────────────────
+
+_REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+_redis_client = None
+
+
+def _init_redis() -> None:
+    global _redis_client
+    try:
+        import redis as _redis_lib
+        r = _redis_lib.from_url(_REDIS_URL, socket_connect_timeout=2, decode_responses=True)
+        r.ping()
+        _redis_client = r
+        logger.info("[Redis] Connected at %s", _REDIS_URL)
+    except Exception as exc:
+        logger.warning("[Redis] Unavailable (%s) — last_fetched tracking disabled", exc)
+
+
+def _set_last_fetched(ticker: str) -> None:
+    if _redis_client:
+        try:
+            _redis_client.set(f"last_fetched:{ticker}", datetime.now(timezone.utc).isoformat())
+        except Exception:
+            pass
 
 app = FastAPI(title="Signal Generation Service")
 app.add_middleware(
@@ -309,6 +334,7 @@ async def _ingest_ticker_signal(ticker: str, client: httpx.AsyncClient) -> Signa
     signal = await _compute_signal(ticker, persist_articles=True, results_client=client)
     _set_cached(ticker, signal)
     await _store_signal(signal, client)
+    _set_last_fetched(ticker)
     return signal
 
 
@@ -499,6 +525,7 @@ async def _compute_signal(
 async def startup():
     """Start the periodic all-ticker signal ingestion scheduler."""
     global _scheduler
+    _init_redis()
     _scheduler = AsyncIOScheduler(timezone=timezone.utc)
     _scheduler.add_job(
         _ingest_all_signals,
@@ -541,8 +568,24 @@ def health():
     }
 
 
-# /signals/top-picks must be declared before /signals/{ticker} to avoid
-# the literal string "top-picks" being captured as a ticker parameter.
+# Literal-path routes must be declared before /signals/{ticker} to avoid
+# path parameter capture.
+
+@app.get("/signals/all")
+def get_all_signals() -> dict:
+    """Return cached signals for all default tickers in a single response.
+
+    Only tickers that already have a cached (non-expired) signal are included.
+    Frontend can call this once on mount to populate all 10 panels instantly.
+    """
+    result = {}
+    for ticker in DEFAULT_TICKERS:
+        signal = _get_cached(ticker)
+        if signal is not None:
+            result[ticker] = signal.model_dump()
+    return result
+
+
 @app.get("/signals/top-picks", response_model=list[Signal])
 async def top_picks(limit: int = Query(5, le=20)):
     """Compute signals for all default tickers and return the top BUY signals."""

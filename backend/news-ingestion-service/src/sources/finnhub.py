@@ -1,6 +1,7 @@
 import os
 import httpx
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 from ..schema import Article
 from ..dedup import make_id, is_duplicate, mark_seen
 
@@ -8,8 +9,12 @@ FINNHUB_URL = "https://finnhub.io/api/v1/company-news"
 MAX_ARTICLES = 5
 
 
-async def fetch_finnhub(ticker: str) -> list[Article]:
-    """Fetch company news from Finnhub. Silently skips if FINNHUB_API_KEY is not set."""
+async def fetch_finnhub(ticker: str, since: Optional[datetime] = None) -> list[Article]:
+    """Fetch company news from Finnhub. Silently skips if FINNHUB_API_KEY is not set.
+
+    If *since* is provided it is used as the ``from`` date so the API only
+    returns articles published after the last successful ingest cycle.
+    """
     api_key = os.getenv("FINNHUB_API_KEY", "")
     if not api_key:
         return []
@@ -19,7 +24,7 @@ async def fetch_finnhub(ticker: str) -> list[Article]:
     articles: list[Article] = []
     fetched_count = 0
 
-    from_date = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+    from_date = since.strftime("%Y-%m-%d") if since else (now - timedelta(days=30)).strftime("%Y-%m-%d")
     to_date = now.strftime("%Y-%m-%d")
 
     try:
