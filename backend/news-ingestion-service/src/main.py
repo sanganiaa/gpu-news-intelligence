@@ -1,3 +1,4 @@
+import asyncio
 import os
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,9 +26,7 @@ app.add_middleware(
 # Any ticker outside this list can still be fetched on-demand via GET /news/{ticker}
 DEFAULT_TICKERS = [
     "NVDA", "AAPL", "MSFT", "META", "TSLA",
-    "AMZN", "AMD", "SNOW", "PLTR", "SMCI",
-    "INTC", "QCOM", "ARM", "AVGO", "TSM",
-    "ASML", "ORCL", "CRM", "ADBE", "NOW",
+    "AMZN", "AMD", "GOOGL", "NFLX", "PLTR",
 ]
 
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL_SECONDS", 60))
@@ -130,14 +129,15 @@ async def ingest_ticker(ticker: str) -> list[Article]:
 
 
 async def ingest_watchlist():
-    """Poll all default tickers — runs on scheduler."""
-    print(f"\n[Scheduler] Starting watchlist cycle at {datetime.now(timezone.utc).isoformat()}")
-    total = 0
-    for ticker in DEFAULT_TICKERS:
-        articles = await ingest_ticker(ticker)
-        total += len(articles)
+    """Poll all default tickers concurrently — runs on scheduler."""
+    start = datetime.now(timezone.utc)
+    print(f"[Scheduler] Cycle started — {len(DEFAULT_TICKERS)} tickers")
 
-    print(f"[Scheduler] Cycle complete — {total} new articles, {seen_count()} total deduped\n")
+    results = await asyncio.gather(*[ingest_ticker(t) for t in DEFAULT_TICKERS])
+    total = sum(len(r) for r in results)
+
+    elapsed = (datetime.now(timezone.utc) - start).total_seconds()
+    print(f"[Scheduler] Cycle complete in {elapsed:.1f}s — {total} new articles")
 
 
 @app.on_event("startup")

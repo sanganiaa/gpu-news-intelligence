@@ -24,9 +24,7 @@ SIGNAL_INGEST_INTERVAL_SECONDS = int(os.getenv("SIGNAL_INGEST_INTERVAL_SECONDS",
 
 DEFAULT_TICKERS = [
     "NVDA", "AAPL", "MSFT", "META", "TSLA",
-    "AMZN", "AMD", "SNOW", "PLTR", "SMCI",
-    "INTC", "QCOM", "ARM", "AVGO", "TSM",
-    "ASML", "ORCL", "CRM", "ADBE", "NOW",
+    "AMZN", "AMD", "GOOGL", "NFLX", "PLTR",
 ]
 
 logging.basicConfig(level=logging.INFO)
