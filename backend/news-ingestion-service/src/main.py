@@ -6,15 +6,13 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from .sources.yahoo import fetch_yahoo_rss
-from .sources.newsapi import fetch_newsapi
+from .sources.finnhub import fetch_finnhub
 from .sources.edgar import fetch_edgar_8k
-from .sources.fred import fetch_fred_indicators
-from .sources.reddit import fetch_reddit_top_posts
 from .dedup import seen_count
 from .schema import Article
 from .cache import cache
 
-ContentType = Literal["news", "sec_filing", "reddit", "macro"]
+ContentType = Literal["news", "sec_filing"]
 
 app = FastAPI(title="News Ingestion Service")
 app.add_middleware(
@@ -63,19 +61,9 @@ def _infer_content_type(article: Article) -> ContentType:
         or source == "sec"
         or "sec filing" in title
         or "form 8-k" in title
-        or "form 10-k" in title
-        or "form 10-q" in title
         or "8-k" in title
-        or "10-k" in title
-        or "10-q" in title
     ):
         return "sec_filing"
-    if article.content_type in {"news", "reddit", "macro"}:
-        return article.content_type
-    if source == "reddit":
-        return "reddit"
-    if source == "fred" or article.ticker.upper() == "MACRO":
-        return "macro"
     return "news"
 
 
@@ -83,14 +71,10 @@ def _source_bucket(article: Article) -> str:
     source = (article.source or "").lower()
     if "yahoo" in source:
         return "yahoo_rss"
-    if "newsapi" in source or "news api" in source:
-        return "newsapi"
+    if source == "finnhub":
+        return "finnhub"
     if "edgar" in source or source == "sec" or _infer_content_type(article) == "sec_filing":
         return "sec_edgar"
-    if source == "fred":
-        return "fred"
-    if source == "reddit":
-        return "reddit"
     return "other"
 
 
@@ -133,26 +117,15 @@ async def ingest_ticker(ticker: str) -> list[Article]:
     Returns only newly ingested articles (dedup already applied inside each source).
     """
     ticker = ticker.upper()
-    new_articles = []
-
-    before_count = cache.get_article_count(ticker)
 
     yahoo   = await fetch_yahoo_rss(ticker)
-    newsapi = await fetch_newsapi(ticker)
+    finnhub = await fetch_finnhub(ticker)
     edgar   = await fetch_edgar_8k(ticker)
 
-    new_articles.extend(yahoo)
-    new_articles.extend(newsapi)
-    new_articles.extend(edgar)
-
+    new_articles = yahoo + finnhub + edgar
     store_articles(new_articles)
-    after_count = cache.get_article_count(ticker)
 
-    print(
-        f"[{ticker}] Ingested {len(new_articles)} new articles "
-        f"(Yahoo: {len(yahoo)}, NewsAPI: {len(newsapi)}, EDGAR: {len(edgar)}); "
-        f"cached_before={before_count} cached_after={after_count}"
-    )
+    print(f"[{ticker}] Total: {len(new_articles)} new articles")
     return new_articles
 
 
@@ -164,15 +137,6 @@ async def ingest_watchlist():
         articles = await ingest_ticker(ticker)
         total += len(articles)
 
-    macro_articles = await fetch_fred_indicators()
-    reddit_articles = await fetch_reddit_top_posts()
-    store_articles(macro_articles + reddit_articles)
-    total += len(macro_articles) + len(reddit_articles)
-
-    print(
-        f"[Scheduler] Non-ticker sources "
-        f"(FRED: {len(macro_articles)}, Reddit: {len(reddit_articles)})"
-    )
     print(f"[Scheduler] Cycle complete — {total} new articles, {seen_count()} total deduped\n")
 
 
@@ -252,21 +216,18 @@ def source_status():
 
     source_counts: dict[str, int] = {
         "yahoo_rss": 0,
-        "newsapi": 0,
+        "finnhub": 0,
         "sec_edgar": 0,
-        "fred": 0,
-        "reddit": 0,
         "other": 0,
     }
     content_type_counts: dict[str, int] = {
         "news": 0,
         "sec_filing": 0,
-        "reddit": 0,
-        "macro": 0,
     }
 
     for article in unique_articles:
-        source_counts[_source_bucket(article)] += 1
+        bucket = _source_bucket(article)
+        source_counts[bucket] = source_counts.get(bucket, 0) + 1
         content_type = _infer_content_type(article)
         content_type_counts[content_type] = content_type_counts.get(content_type, 0) + 1
 

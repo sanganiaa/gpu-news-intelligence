@@ -85,13 +85,9 @@ async def fetch_edgar_8k(ticker: str) -> list[Article]:
         filing_dates      = filings.get("filingDate", [])
         primary_docs      = filings.get("primaryDocument", [])
 
-        now     = datetime.now(timezone.utc)
-        cutoff  = now - timedelta(days=90)
+        now    = datetime.now(timezone.utc)
+        cutoff = now - timedelta(days=30)
 
-        # ── Date-filter pass ─────────────────────────────────────────────────
-        # Walk all 8-Ks first so we can log accurate counts before any dedup
-        # or per-ticker cap truncates the list.
-        filtered_old = 0
         recent: list[tuple[int, str, datetime]] = []  # (index, date_str, parsed_dt)
 
         for i, form in enumerate(forms):
@@ -102,18 +98,10 @@ async def fetch_edgar_8k(ticker: str) -> list[Article]:
             try:
                 parsed_dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
             except Exception:
-                parsed_dt = now  # treat unparseable dates as current
+                parsed_dt = now
 
-            if parsed_dt < cutoff:
-                filtered_old += 1
-            else:
+            if parsed_dt >= cutoff:
                 recent.append((i, date_str, parsed_dt))
-
-        print(
-            f"[EDGAR] {ticker.upper()}: fetched={total_8k} total, "
-            f"{filtered_old} filtered (too old), "
-            f"{len(recent)} kept (within 90 days)"
-        )
 
         # ── Article construction ──────────────────────────────────────────────
         for i, date_str, published_dt in recent:
@@ -144,11 +132,12 @@ async def fetch_edgar_8k(ticker: str) -> list[Article]:
             mark_seen(article_id)
             articles.append(article)
 
-            if len(articles) >= 5:
+            if len(articles) >= 3:
                 break
 
     except Exception as e:
-        print(f"[EDGAR] {ticker.upper()}: fetched={total_8k} saved={len(articles)} error={e}")
+        print(f"[EDGAR 8-K] {ticker.upper()}: fetched={len(recent)} saved={len(articles)} error={e}")
         return articles
 
+    print(f"[EDGAR 8-K] {ticker.upper()}: fetched={len(recent)} saved={len(articles)}")
     return articles
