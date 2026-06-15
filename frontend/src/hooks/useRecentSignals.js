@@ -6,8 +6,8 @@ const POLL_MS = 30000;
 // Tickers whose signals are already ingested by the backend scheduler —
 // no on-demand ingest needed for these.
 const DEFAULT_TICKERS = new Set([
-  'NVDA', 'AAPL', 'MSFT', 'META', 'TSLA', 'AMZN', 'AMD', 'SNOW', 'PLTR',
-  'SMCI', 'INTC', 'QCOM', 'ARM',  'AVGO', 'ASML', 'ORCL', 'CRM',  'ADBE', 'NOW',
+  'NVDA', 'AAPL', 'MSFT', 'META', 'TSLA',
+  'AMZN', 'AMD',  'GOOGL', 'NFLX', 'PLTR',
 ]);
 
 function normalizeSignal(signal) {
