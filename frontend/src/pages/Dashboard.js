@@ -3,6 +3,8 @@ import TerminalHeader from '../components/Terminal/TerminalHeader';
 import HeroSignal from '../components/Terminal/HeroSignal';
 import RecentSignalsPanel from '../components/Terminal/RecentSignalsPanel';
 import ArticlesFeed from '../components/Terminal/ArticlesFeed';
+import SECFilingsPanel from '../components/Terminal/SECFilingsPanel';
+import TickerDrilldownPanel from '../components/Terminal/TickerDrilldownPanel';
 import StatusBar from '../components/Terminal/StatusBar';
 import { getHealth, SERVICE_URLS } from '../api/client';
 import { useNews } from '../hooks/useNews';
@@ -32,7 +34,7 @@ async function fetchInferenceHealthRaw() {
 }
 
 const LS_KEY = 'recentTickers';
-const MAX_RECENT = 20; // room for recently-searched tickers on top of the 10 defaults
+const MAX_RECENT = 20;
 
 const FRONTEND_DEFAULT_TICKERS = [
   'NVDA', 'AAPL', 'MSFT', 'META', 'TSLA', 'AMZN', 'AMD', 'GOOGL', 'NFLX', 'PLTR',
@@ -43,7 +45,6 @@ function loadRecentFromStorage() {
     const stored = localStorage.getItem(LS_KEY);
     const parsed = stored ? JSON.parse(stored) : null;
     if (Array.isArray(parsed) && parsed.length > 0) {
-      // Keep user's recently-searched order, then append any defaults not already present.
       const merged = [...new Set([...parsed, ...FRONTEND_DEFAULT_TICKERS])];
       return merged.slice(0, MAX_RECENT);
     }
@@ -64,7 +65,6 @@ export default function Dashboard() {
     const t = newTicker.toUpperCase();
     setTicker(t);
     setRecentTickers(prev => {
-      // User-searched ticker goes to the top; defaults are always kept at the end.
       const merged = [...new Set([t, ...prev, ...FRONTEND_DEFAULT_TICKERS])].slice(0, MAX_RECENT);
       try { localStorage.setItem(LS_KEY, JSON.stringify(merged)); } catch {}
       return merged;
@@ -109,6 +109,7 @@ export default function Dashboard() {
   }, []);
 
   const selectedSignal = signals.selected;
+  const updating = signals.loading && !!selectedSignal;
 
   // Enrich articles with sentiment from signal's supporting_articles
   const enrichedArticles = useMemo(() => {
@@ -143,9 +144,10 @@ export default function Dashboard() {
           signal={selectedSignal}
           ticker={ticker}
           loading={signals.loading}
+          updating={updating}
         />
 
-        <div className="content-grid">
+        <div className="sidebar-grid">
           <RecentSignalsPanel
             recentTickers={recentTickers}
             signalsByTicker={signalsByTicker}
@@ -153,10 +155,22 @@ export default function Dashboard() {
             ticker={ticker}
             onTickerClick={handleTickerChange}
           />
-          <ArticlesFeed
-            articles={enrichedArticles}
-            signal={selectedSignal}
-          />
+
+          <div>
+            <ArticlesFeed
+              articles={enrichedArticles}
+              signal={selectedSignal}
+            />
+            <SECFilingsPanel
+              articles={enrichedArticles}
+              ticker={ticker}
+            />
+            <TickerDrilldownPanel
+              articles={enrichedArticles}
+              signal={selectedSignal}
+              ticker={ticker}
+            />
+          </div>
         </div>
       </main>
 

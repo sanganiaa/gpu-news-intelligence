@@ -1,34 +1,80 @@
 import React from 'react';
 
-function sourceLabel(article) {
-  if (article.content_type === 'sec_filing' || article.source === 'sec_edgar') return 'SEC';
-  if (article.source === 'finnhub') return 'Finnhub';
-  return 'Yahoo';
+function stripHtml(value) {
+  if (!value) return '';
+  return String(value)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-function fmtScore(n) {
-  if (n == null || Number.isNaN(Number(n))) return null;
-  const val = Number(n);
-  return `${val >= 0 ? '+' : ''}${val.toFixed(2)}`;
+function extractHref(value) {
+  if (!value) return null;
+  const match = String(value).match(/href=["']([^"']+)["']/i);
+  return match ? match[1] : null;
+}
+
+function sourceLabel(article) {
+  if (article.content_type === 'sec_filing' || article.source === 'sec_edgar') return 'SEC';
+  const s = String(article.source || '').toLowerCase();
+  if (s.includes('finnhub')) return 'Finnhub';
+  if (s.includes('edgar') || s.includes('sec')) return 'SEC';
+  return 'Yahoo';
 }
 
 function fmtTime(value) {
   if (!value) return '';
   try {
-    return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return new Date(value).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   } catch {
     return '';
   }
 }
 
+function pct(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(Math.max(0, Math.min(n, 1)) * 100) : 0;
+}
+
+function SentimentBar({ article }) {
+  const pos = pct(article.positive);
+  const neg = pct(article.negative);
+  const neu = pct(article.neutral);
+  if (pos === 0 && neg === 0 && neu === 0) return null;
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div style={{ display: 'flex', height: 4, overflow: 'hidden', borderRadius: 3, background: 'var(--border)' }}>
+        <div style={{ width: `${pos}%`, background: '#00ff41' }} />
+        <div style={{ width: `${neg}%`, background: '#ff3131' }} />
+        <div style={{ width: `${neu}%`, background: '#444' }} />
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 4, fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-dim)' }}>
+        <span style={{ color: '#00ff41' }}>pos {pos}%</span>
+        <span style={{ color: '#ff3131' }}>neg {neg}%</span>
+        <span>neu {neu}%</span>
+      </div>
+    </div>
+  );
+}
+
 export default function ArticlesFeed({ articles = [], signal }) {
-  const displayArticles = articles.slice(0, 10);
+  const displayArticles = articles
+    .filter(a => !(a.content_type === 'sec_filing' || a.is_filing || a.filing_type ||
+      String(a.source || '').toLowerCase().includes('edgar')))
+    .slice(0, 5);
 
   return (
     <div className="t-card" style={{ overflow: 'hidden' }}>
       <div style={{ padding: '14px 14px 0' }}>
         <div className="t-card-title">
-          Supporting Articles
+          Live Ingestion Feed
           {signal && (
             <span style={{ color: 'var(--text-dim)', letterSpacing: '0.04em' }}>
               {signal.ticker}
@@ -45,36 +91,26 @@ export default function ArticlesFeed({ articles = [], signal }) {
       )}
 
       {displayArticles.map((article, i) => {
-        const netScore = article.net_sentiment ?? (
-          article.positive != null ? article.positive - article.negative : null
-        );
-        const scoreStr = fmtScore(netScore);
-        const scoreColor = netScore == null ? 'var(--text-dim)'
-          : netScore > 0.05 ? '#00ff41'
-          : netScore < -0.05 ? '#ff3131'
-          : '#ffaa00';
+        const rawTitle = article.title || '';
+        const href = extractHref(rawTitle) || article.url || null;
+        const title = stripHtml(rawTitle) || '—';
         const src = sourceLabel(article);
 
         return (
           <div
             key={article.id || article.url || i}
             style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 46px',
-              alignItems: 'start',
-              gap: 10,
-              padding: '9px 14px',
+              padding: '10px 14px',
               borderBottom: '1px solid var(--border)',
             }}
           >
-            {/* Left: prefix + headline + source */}
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, minWidth: 0 }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#00ff41', flexShrink: 0 }}>
-                  &gt;
-                </span>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, minWidth: 0 }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#00ff41', flexShrink: 0 }}>
+                &gt;
+              </span>
+              {href ? (
                 <a
-                  href={article.url}
+                  href={href}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{
@@ -82,52 +118,40 @@ export default function ArticlesFeed({ articles = [], signal }) {
                     fontSize: 11,
                     color: 'var(--text-primary)',
                     textDecoration: 'none',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
+                    lineHeight: 1.4,
                     display: 'block',
                   }}
-                  title={article.title}
                 >
-                  {article.title || '—'}
+                  {title}
                 </a>
-              </div>
-              <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 9,
-                  color: 'var(--text-dim)',
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                  background: 'var(--border)',
-                  padding: '1px 5px',
-                  borderRadius: 3,
-                }}>
-                  {src}
-                </span>
-                {article.published_at && (
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-dim)' }}>
-                    {fmtTime(article.published_at)}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Right: sentiment score */}
-            <div style={{ textAlign: 'right', flexShrink: 0 }}>
-              {scoreStr ? (
-                <span style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 11,
-                  fontWeight: 500,
-                  color: scoreColor,
-                }}>
-                  {scoreStr}
-                </span>
               ) : (
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-dim)' }}>—</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-primary)', lineHeight: 1.4 }}>
+                  {title}
+                </span>
               )}
             </div>
+
+            <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 9,
+                color: 'var(--text-dim)',
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                background: 'var(--border)',
+                padding: '1px 5px',
+                borderRadius: 3,
+              }}>
+                {src}
+              </span>
+              {article.published_at && (
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-dim)' }}>
+                  {fmtTime(article.published_at)}
+                </span>
+              )}
+            </div>
+
+            <SentimentBar article={article} />
           </div>
         );
       })}
