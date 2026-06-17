@@ -56,7 +56,7 @@ function SentimentBar({ article }) {
         <div style={{ width: `${neu}%`, background: '#444' }} />
       </div>
       <div style={{ display: 'flex', gap: 10, marginTop: 4, fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-dim)' }}>
-        <span style={{ color: '#00ff41' }}>pos {pos}%</span>
+        <span style={{ color: '#e0e0e0' }}>pos {pos}%</span>
         <span style={{ color: '#ff3131' }}>neg {neg}%</span>
         <span>neu {neu}%</span>
       </div>
@@ -105,7 +105,7 @@ export default function ArticlesFeed({ articles = [], signal }) {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, minWidth: 0 }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#00ff41', flexShrink: 0 }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#e0e0e0', flexShrink: 0 }}>
                 &gt;
               </span>
               {href ? (

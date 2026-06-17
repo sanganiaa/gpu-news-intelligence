@@ -25,8 +25,8 @@ export default function StatusBar({ services = [] }) {
         bottom: 0, left: 0, right: 0,
         zIndex: 100,
         height: 40,
-        background: '#0d0d0d',
-        borderTop: '1px solid var(--border)',
+        background: '#000000',
+        borderTop: '1px solid rgba(0,255,65,0.08)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -48,7 +48,7 @@ export default function StatusBar({ services = [] }) {
               <span style={{
                 fontFamily: 'var(--font-mono)',
                 fontSize: 10,
-                color: healthy ? 'var(--text-secondary)' : '#ff3131',
+                color: healthy ? 'rgba(0,255,65,0.5)' : '#ff3131',
                 letterSpacing: '0.04em',
               }}>
                 {SERVICE_LABELS[svc.key] || svc.key}
@@ -66,9 +66,9 @@ export default function StatusBar({ services = [] }) {
           style={{
             fontFamily: 'var(--font-mono)',
             fontSize: 10,
-            color: 'var(--text-dim)',
+            color: '#444444',
             background: 'transparent',
-            border: '1px solid var(--border)',
+            border: '1px solid rgba(0,255,65,0.08)',
             borderRadius: 3,
             padding: '2px 8px',
             cursor: 'pointer',
@@ -85,10 +85,12 @@ export default function StatusBar({ services = [] }) {
               bottom: 'calc(100% + 8px)',
               right: 0,
               width: 320,
-              background: '#0d0d0d',
-              border: '1px solid var(--border-strong)',
+              background: 'rgba(0,255,65,0.03)',
+              backdropFilter: 'blur(20px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+              border: '1px solid rgba(0,255,65,0.15)',
               borderRadius: 6,
-              boxShadow: '0 0 20px rgba(0,0,0,0.7)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(0,255,65,0.06)',
               padding: '12px 0',
               zIndex: 300,
             }}
@@ -129,7 +131,7 @@ export default function StatusBar({ services = [] }) {
                   <span style={{
                     fontFamily: 'var(--font-mono)',
                     fontSize: 9,
-                    color: healthy ? 'var(--text-secondary)' : '#ff3131',
+                    color: healthy ? 'rgba(0,255,65,0.5)' : '#ff3131',
                     letterSpacing: '0.04em',
                   }}>
                     {svc.status || 'unknown'}

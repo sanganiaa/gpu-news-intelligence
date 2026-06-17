@@ -6,9 +6,8 @@ const S = {
     position: 'sticky',
     top: 0,
     zIndex: 200,
-    background: '#0d0d0d',
-    borderBottom: '1px solid',
-    borderImage: 'linear-gradient(to right, #1f1f1f, #333333, #1f1f1f) 1',
+    background: '#000000',
+    borderBottom: '1px solid rgba(0,255,65,0.1)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -24,7 +23,7 @@ const S = {
     userSelect: 'none',
   },
   prompt: {
-    color: '#00ff41',
+    color: '#e0e0e0',
     marginRight: 6,
   },
   right: {
@@ -52,7 +51,7 @@ export default function TerminalHeader({ ticker, onTickerChange, isLive }) {
         <span
           style={{
             ...S.liveDot,
-            background: isLive ? '#00ff41' : '#333333',
+            background: isLive ? '#00ff41' : 'rgba(0,255,65,0.2)',
             boxShadow: isLive ? '0 0 8px #00ff41' : 'none',
             animation: isLive ? 'live-blink 2.4s ease-in-out infinite' : 'none',
           }}

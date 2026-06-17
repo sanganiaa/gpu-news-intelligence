@@ -189,7 +189,7 @@ export default function TickerDrilldownPanel({ articles = [], signal, ticker }) 
           {/* Bull / Bear case */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
             <div style={{ padding: '12px 14px', borderRight: '1px solid var(--border)' }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#00ff41', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#e0e0e0', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
                 Bull Case
               </div>
               {bullArticles.length === 0 ? (

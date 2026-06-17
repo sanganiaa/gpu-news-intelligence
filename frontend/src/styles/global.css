@@ -4,34 +4,46 @@
 
 :root {
   /* backgrounds */
-  --bg-root:    #0a0a0a;
-  --bg-surface: #111111;
-  --bg-header:  #0d0d0d;
+  --bg-root:    #000000;
+  --bg-surface: rgba(0, 255, 65, 0.03);
+  --bg-header:  #000000;
 
   /* borders */
-  --border:       #1f1f1f;
-  --border-strong: #2a2a2a;
+  --border:        rgba(0, 255, 65, 0.08);
+  --border-bright: rgba(0, 255, 65, 0.15);
+  --border-strong: rgba(0, 255, 65, 0.15);
 
   /* text */
-  --text-primary:   #e0e0e0;
+  --text-primary: #e0e0e0;
   --text-secondary: #666666;
-  --text-dim:       #333333;
-  --text-hint:      #444444;
+  --text-dim: #333333;
+  --text-hint:      rgba(0, 255, 65, 0.3);
+
+  /* terminal palette */
+  --terminal-green: #00ff41;
+  --terminal-green-dim: rgba(0, 255, 65, 0.6);
+  --terminal-green-glow: rgba(0, 255, 65, 0.15);
+  --terminal-green-subtle: rgba(0, 255, 65, 0.05);
 
   /* signal palette */
-  --buy:        #00ff41;
+  --signal-buy:  #00ff41;
+  --signal-sell: #ff3131;
+  --signal-hold: #ffaa00;
+  --buy:        var(--signal-buy);
   --buy-bg:     rgba(0, 255, 65, 0.08);
   --buy-glow:   rgba(0, 255, 65, 0.18);
-  --sell:       #ff3131;
+  --sell:       var(--signal-sell);
   --sell-bg:    rgba(255, 49, 49, 0.08);
   --sell-glow:  rgba(255, 49, 49, 0.18);
-  --hold:       #ffaa00;
+  --hold:       var(--signal-hold);
   --hold-bg:    rgba(255, 170, 0, 0.08);
   --hold-glow:  rgba(255, 170, 0, 0.18);
 
   /* compat aliases expected by SearchBar + hooks */
-  --surface:   #111111;
-  --surface-2: #161616;
+  --surface:          rgba(0, 255, 65, 0.03);
+  --surface-hover:    rgba(0, 255, 65, 0.06);
+  --surface-selected: rgba(0, 255, 65, 0.08);
+  --surface-2:        rgba(0, 255, 65, 0.06);
   --green:          #00ff41;
   --green-bg:       rgba(0, 255, 65, 0.08);
   --green-text:     #00ff41;
@@ -41,9 +53,9 @@
   --amber:          #ffaa00;
   --amber-bg:       rgba(255, 170, 0, 0.08);
   --amber-text:     #ffaa00;
-  --blue:           #4488ff;
-  --blue-bg:        rgba(68, 136, 255, 0.08);
-  --blue-text:      #4488ff;
+  --blue:           #00ff41;
+  --blue-bg:        rgba(0, 255, 65, 0.08);
+  --blue-text:      #00ff41;
 
   /* fonts */
   --font-mono: 'IBM Plex Mono', 'JetBrains Mono', 'ui-monospace', monospace;
@@ -58,13 +70,21 @@
 html, body { height: 100%; }
 
 body {
-  font-family: var(--font-sans);
-  background: radial-gradient(ellipse at 50% 30%, #141414 0%, #0a0a0a 70%);
-  background-attachment: fixed;
+  font-family: var(--font-mono);
+  background: #000000;
   color: var(--text-primary);
   min-height: 100vh;
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.7) 100%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* ── Keyframes ──────────────────────────────────────────────────── */
@@ -84,15 +104,24 @@ body {
   50%       { opacity: 1; }
 }
 
+@keyframes tape-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
 /* ── Layout shells ──────────────────────────────────────────────── */
 
 .terminal-root {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
 }
 
 .terminal-main {
+  position: relative;
+  z-index: 1;
   flex: 1;
   max-width: 1280px;
   width: 100%;
@@ -103,9 +132,13 @@ body {
 /* ── Cards ──────────────────────────────────────────────────────── */
 
 .t-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+  background: rgba(0, 255, 65, 0.03);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(0, 255, 65, 0.08);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(0, 255, 65, 0.06);
   border-radius: var(--radius-lg);
 }
 
@@ -126,7 +159,7 @@ body {
 
 .t-divider {
   height: 1px;
-  background: linear-gradient(to right, var(--border), #333333, var(--border));
+  background: linear-gradient(to right, transparent, var(--border-bright), transparent);
   border: none;
   margin: 0;
 }
@@ -150,6 +183,12 @@ body {
   gap: 16px;
   margin-top: 16px;
   align-items: start;
+}
+
+/* ── Recent ticker rows ─────────────────────────────────────────── */
+
+.recent-row:not(.is-selected):hover {
+  background: rgba(0, 255, 65, 0.06) !important;
 }
 
 @media (max-width: 860px) {

@@ -1,9 +1,9 @@
 import React from 'react';
 
 const VERDICT_COLOR = {
-  BUY:  { text: '#00ff41', bg: 'rgba(0,255,65,0.08)',  glow: 'rgba(0,255,65,0.22)',  shadow: '0 0 20px #00ff41' },
-  SELL: { text: '#ff3131', bg: 'rgba(255,49,49,0.08)', glow: 'rgba(255,49,49,0.22)', shadow: '0 0 20px #ff3131' },
-  HOLD: { text: '#ffaa00', bg: 'rgba(255,170,0,0.08)', glow: 'rgba(255,170,0,0.22)', shadow: '0 0 20px #ffaa00' },
+  BUY:  { text: '#00ff41', glow: 'rgba(0,255,65,0.12)',  shadow: '0 0 20px rgba(0,255,65,0.9)' },
+  SELL: { text: '#ff3131', glow: 'rgba(255,49,49,0.12)', shadow: '0 0 20px rgba(255,49,49,0.9)' },
+  HOLD: { text: '#ffaa00', glow: 'rgba(255,170,0,0.12)', shadow: '0 0 20px rgba(255,170,0,0.9)' },
 };
 
 const COMPANY_NAMES = {
@@ -35,13 +35,13 @@ export default function HeroSignal({ signal, ticker, loading, updating }) {
   const companyName = COMPANY_NAMES[ticker] || null;
 
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 0 24px' }}>
+    <section style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 0 24px' }}>
       {/* Ticker header — sits above card */}
       <div style={{ width: '100%', maxWidth: 440, marginBottom: 10 }}>
         <div style={{
           fontFamily: "'IBM Plex Mono', monospace",
           fontSize: 14,
-          color: '#666666',
+          color: 'var(--terminal-green)',
           letterSpacing: '0.1em',
         }}>
           &gt; {ticker}
@@ -50,14 +50,14 @@ export default function HeroSignal({ signal, ticker, loading, updating }) {
           <div style={{
             fontFamily: "'IBM Plex Mono', monospace",
             fontSize: 11,
-            color: '#333333',
+            color: 'var(--text-secondary)',
             marginTop: 3,
             letterSpacing: '0.05em',
           }}>
             {companyName}
           </div>
         )}
-        <div style={{ height: 1, background: '#1f1f1f', marginTop: 8 }} />
+        <div style={{ height: 1, background: 'var(--border)', marginTop: 8 }} />
       </div>
 
       {/* Card + glow orb wrapper */}
@@ -68,8 +68,8 @@ export default function HeroSignal({ signal, ticker, loading, updating }) {
           style={{
             position: 'absolute',
             top: '50%', left: '50%',
-            width: 340, height: 340,
-            marginTop: -170, marginLeft: -170,
+            width: 280, height: 280,
+            marginTop: -140, marginLeft: -140,
             borderRadius: '50%',
             background: `radial-gradient(circle, ${vc.glow} 0%, transparent 70%)`,
             animation: isLive ? 'glow-pulse 3s ease-in-out infinite' : 'none',
@@ -84,9 +84,10 @@ export default function HeroSignal({ signal, ticker, loading, updating }) {
             position: 'relative',
             zIndex: 1,
             width: '100%',
-            padding: '20px 40px',
-            background: vc.bg,
-            border: `1px solid ${vc.text}22`,
+            padding: '16px 32px',
+            background: 'rgba(0,255,65,0.04)',
+            border: '1px solid rgba(0,255,65,0.12)',
+            borderTop: '1px solid rgba(0,255,65,0.2)',
             textAlign: 'center',
           }}
         >
@@ -97,7 +98,7 @@ export default function HeroSignal({ signal, ticker, loading, updating }) {
               right: 12,
               fontFamily: 'var(--font-mono)',
               fontSize: 9,
-              color: 'var(--text-dim)',
+              color: 'var(--terminal-green-dim)',
               letterSpacing: '0.15em',
               opacity: 0.6,
             }}>
@@ -116,7 +117,7 @@ export default function HeroSignal({ signal, ticker, loading, updating }) {
                 style={{
                   fontFamily: 'var(--font-mono)',
                   fontWeight: 600,
-                  fontSize: 'clamp(38px, 6vw, 65px)',
+                  fontSize: 'clamp(32px, 5vw, 55px)',
                   letterSpacing: '0.45em',
                   color: vc.text,
                   textShadow: vc.shadow,
@@ -131,7 +132,7 @@ export default function HeroSignal({ signal, ticker, loading, updating }) {
               <div
                 style={{
                   fontFamily: 'var(--font-mono)',
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: 300,
                   color: vc.text,
                   opacity: 0.8,

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import TerminalHeader from '../components/Terminal/TerminalHeader';
+import TickerTape from '../components/Terminal/TickerTape';
 import HeroSignal from '../components/Terminal/HeroSignal';
 import RecentSignalsPanel from '../components/Terminal/RecentSignalsPanel';
 import ArticlesFeed from '../components/Terminal/ArticlesFeed';
@@ -138,6 +139,8 @@ export default function Dashboard() {
         onTickerChange={handleTickerChange}
         isLive={!!selectedSignal && !signals.loading}
       />
+
+      <TickerTape signalsByTicker={signalsByTicker} />
 
       <main className="terminal-main">
         <HeroSignal

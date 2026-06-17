@@ -41,7 +41,7 @@ export default function RecentSignalsPanel({
   return (
     <div className="t-card" style={{ overflow: 'hidden' }}>
       <div style={{ padding: '14px 14px 0' }}>
-        <div className="t-card-title">Recent Tickers</div>
+        <div className="t-card-title" style={{ color: '#555555' }}>Recent Tickers</div>
         <hr className="t-divider" style={{ margin: '0 -14px 0' }} />
       </div>
 
@@ -56,12 +56,12 @@ export default function RecentSignalsPanel({
         const isSelected = t === ticker;
         const ingestStatus = ingestStatusByTicker[t];
         const isFav = favorites.has(t);
-        const signalColor = signal ? (VERDICT_COLOR[signal.verdict] || '#ffaa00') : null;
 
         return (
           <div
             key={t}
             onClick={() => onTickerClick?.(t)}
+            className={`recent-row${isSelected ? ' is-selected' : ''}`}
             style={{
               display: 'grid',
               gridTemplateColumns: '14px 52px 1fr 42px 20px',
@@ -69,8 +69,8 @@ export default function RecentSignalsPanel({
               gap: 6,
               padding: '8px 10px 8px 0',
               borderBottom: '1px solid var(--border)',
-              borderLeft: isSelected && signalColor ? `3px solid ${signalColor}` : '3px solid transparent',
-              background: isSelected ? 'rgba(255,255,255,0.03)' : 'transparent',
+              borderLeft: isSelected ? '3px solid #00ff41' : '3px solid transparent',
+              background: isSelected ? 'rgba(0,255,65,0.08)' : 'transparent',
               cursor: 'pointer',
               transition: 'background 0.15s',
               paddingLeft: isSelected ? 10 : 13,
@@ -84,7 +84,7 @@ export default function RecentSignalsPanel({
               fontFamily: 'var(--font-mono)',
               fontSize: 12,
               fontWeight: isSelected ? 600 : 500,
-              color: isSelected && signalColor ? signalColor : 'var(--text-primary)',
+              color: '#e0e0e0',
               letterSpacing: '0.05em',
             }}>
               {t}
@@ -105,14 +105,14 @@ export default function RecentSignalsPanel({
               <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                 <span style={{
                   width: 5, height: 5, borderRadius: '50%',
-                  background: 'var(--blue)',
+                  background: '#00ff41',
                   flexShrink: 0,
                   animation: 'ingest-pulse 1.2s ease-in-out infinite',
                 }} />
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-secondary)' }}>…</span>
               </span>
             ) : (
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-dim)' }}>—</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#333333' }}>—</span>
             )}
 
             {/* Confidence */}
@@ -135,10 +135,10 @@ export default function RecentSignalsPanel({
                 border: 'none',
                 cursor: 'pointer',
                 fontSize: 11,
-                color: isFav ? '#ffaa00' : 'var(--text-dim)',
+                color: isFav ? 'rgba(0,255,65,0.8)' : 'rgba(0,255,65,0.3)',
                 padding: 0,
                 lineHeight: 1,
-                opacity: isFav ? 1 : 0.4,
+                opacity: 1,
                 transition: 'opacity 0.15s, color 0.15s',
               }}
               title={isFav ? 'Unfavorite' : 'Favorite'}

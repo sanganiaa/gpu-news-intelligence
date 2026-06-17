@@ -41,9 +41,9 @@ const styles = {
   wrap: { position: 'relative', width: '100%', maxWidth: 380 },
   input: {
     width: '100%', padding: '10px 16px 10px 40px',
-    border: '0.5px solid var(--border-strong)',
+    border: '0.5px solid rgba(0,255,65,0.15)',
     borderRadius: 'var(--radius-md)',
-    background: 'var(--surface)',
+    background: 'rgba(0,255,65,0.03)',
     fontFamily: 'var(--font-mono)',
     fontSize: 14, fontWeight: 500,
     color: 'var(--text-primary)',
@@ -58,11 +58,13 @@ const styles = {
   },
   dropdown: {
     position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
-    background: 'var(--surface)',
-    border: '0.5px solid var(--border-strong)',
+    background: 'rgba(0,255,65,0.03)',
+    backdropFilter: 'blur(20px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+    border: '0.5px solid rgba(0,255,65,0.15)',
     borderRadius: 'var(--radius-md)',
     zIndex: 100, overflow: 'hidden',
-    boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(0,255,65,0.06)',
   },
   item: {
     padding: '9px 16px',
@@ -82,7 +84,7 @@ const styles = {
     fontFamily: 'var(--font-mono)',
     fontSize: 13,
     cursor: 'pointer',
-    color: 'var(--blue)',
+    color: '#00ff41',
     borderTop: '0.5px solid var(--border)',
     userSelect: 'none',
   },
@@ -92,6 +94,7 @@ export default function SearchBar({ value, onChange }) {
   const [query, setQuery]         = useState(value || '');
   const [open, setOpen]           = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
+  const [focused, setFocused]     = useState(false);
   const ref = useRef();
 
   // Close on outside click
@@ -162,11 +165,15 @@ export default function SearchBar({ value, onChange }) {
     <div style={styles.wrap} ref={ref}>
       <span style={styles.icon}>⌕</span>
       <input
-        style={styles.input}
+        style={{
+          ...styles.input,
+          borderColor: focused ? 'rgba(0,255,65,0.4)' : 'rgba(0,255,65,0.15)',
+        }}
         value={query}
         placeholder="Search ticker or company..."
         onChange={handleChange}
-        onFocus={() => setOpen(true)}
+        onFocus={() => { setFocused(true); setOpen(true); }}
+        onBlur={() => setFocused(false)}
         onKeyDown={handleKey}
         autoComplete="off"
         spellCheck={false}
@@ -179,8 +186,8 @@ export default function SearchBar({ value, onChange }) {
               style={{
                 ...styles.item,
                 background: i === activeIdx
-                  ? 'var(--surface-2)'
-                  : i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
+                  ? 'rgba(0,255,65,0.08)'
+                  : i % 2 === 0 ? 'transparent' : 'rgba(0,255,65,0.03)',
               }}
               onMouseEnter={() => setActiveIdx(i)}
               onMouseLeave={() => setActiveIdx(-1)}
