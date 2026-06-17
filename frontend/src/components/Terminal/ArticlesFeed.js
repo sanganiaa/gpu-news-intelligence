@@ -50,13 +50,13 @@ function SentimentBar({ article }) {
 
   return (
     <div style={{ marginTop: 6 }}>
-      <div style={{ display: 'flex', height: 4, overflow: 'hidden', borderRadius: 3, background: 'var(--border)' }}>
+      <div style={{ display: 'flex', height: 4, overflow: 'hidden', borderRadius: 3, background: 'rgba(255,255,255,0.06)' }}>
         <div style={{ width: `${pos}%`, background: '#00ff41' }} />
         <div style={{ width: `${neg}%`, background: '#ff3131' }} />
-        <div style={{ width: `${neu}%`, background: '#444' }} />
+        <div style={{ width: `${neu}%`, background: '#333' }} />
       </div>
-      <div style={{ display: 'flex', gap: 10, marginTop: 4, fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-dim)' }}>
-        <span style={{ color: '#e0e0e0' }}>pos {pos}%</span>
+      <div style={{ display: 'flex', gap: 10, marginTop: 4, fontFamily: 'var(--font-mono)', fontSize: 9, color: '#444444' }}>
+        <span style={{ color: '#00ff41' }}>pos {pos}%</span>
         <span style={{ color: '#ff3131' }}>neg {neg}%</span>
         <span>neu {neu}%</span>
       </div>
@@ -135,17 +135,17 @@ export default function ArticlesFeed({ articles = [], signal }) {
               <span style={{
                 fontFamily: 'var(--font-mono)',
                 fontSize: 9,
-                color: 'var(--text-dim)',
+                color: '#666666',
                 letterSpacing: '0.06em',
                 textTransform: 'uppercase',
-                background: 'var(--border)',
+                background: 'rgba(255,255,255,0.05)',
                 padding: '1px 5px',
                 borderRadius: 3,
               }}>
                 {src}
               </span>
               {article.published_at && (
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-dim)' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#444444' }}>
                   {fmtTime(article.published_at)}
                 </span>
               )}

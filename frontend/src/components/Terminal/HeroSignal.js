@@ -1,9 +1,34 @@
 import React from 'react';
 
 const VERDICT_COLOR = {
-  BUY:  { text: '#00ff41', glow: 'rgba(0,255,65,0.12)',  shadow: '0 0 20px rgba(0,255,65,0.9)' },
-  SELL: { text: '#ff3131', glow: 'rgba(255,49,49,0.12)', shadow: '0 0 20px rgba(255,49,49,0.9)' },
-  HOLD: { text: '#ffaa00', glow: 'rgba(255,170,0,0.12)', shadow: '0 0 20px rgba(255,170,0,0.9)' },
+  BUY:  {
+    text:   '#00ff41',
+    glow:   'rgba(0,255,65,0.12)',
+    border: 'rgba(0,255,65,0.15)',
+    top:    'rgba(0,255,65,0.3)',
+    shadow: '0 0 20px rgba(0,255,65,0.9)',
+  },
+  SELL: {
+    text:   '#ff3131',
+    glow:   'rgba(255,49,49,0.12)',
+    border: 'rgba(255,49,49,0.15)',
+    top:    'rgba(255,49,49,0.3)',
+    shadow: '0 0 20px rgba(255,49,49,0.9)',
+  },
+  HOLD: {
+    text:   '#ffaa00',
+    glow:   'rgba(255,170,0,0.12)',
+    border: 'rgba(255,170,0,0.15)',
+    top:    'rgba(255,170,0,0.3)',
+    shadow: '0 0 20px rgba(255,170,0,0.9)',
+  },
+};
+const DEFAULT_VC = {
+  text:   '#666666',
+  glow:   'rgba(255,255,255,0.05)',
+  border: 'rgba(255,255,255,0.08)',
+  top:    'rgba(255,255,255,0.12)',
+  shadow: 'none',
 };
 
 const COMPANY_NAMES = {
@@ -27,8 +52,8 @@ const COMPANY_NAMES = {
 function pct(v) { return Math.round((Number(v) || 0) * 100); }
 
 export default function HeroSignal({ signal, ticker, loading, updating }) {
-  const verdict = signal?.verdict || 'HOLD';
-  const vc = VERDICT_COLOR[verdict] || VERDICT_COLOR.HOLD;
+  const verdict = signal?.verdict || null;
+  const vc = (verdict && VERDICT_COLOR[verdict]) || DEFAULT_VC;
   const confidence = pct(signal?.confidence);
   const articleCount = signal?.article_count ?? 0;
   const isLive = !!signal && !loading;
@@ -41,28 +66,29 @@ export default function HeroSignal({ signal, ticker, loading, updating }) {
         <div style={{
           fontFamily: "'IBM Plex Mono', monospace",
           fontSize: 14,
-          color: 'var(--terminal-green)',
+          color: '#e0e0e0',
           letterSpacing: '0.1em',
         }}>
-          &gt; {ticker}
+          <span style={{ color: '#555555' }}>&gt;</span>
+          {' '}{ticker}
         </div>
         {companyName && (
           <div style={{
             fontFamily: "'IBM Plex Mono', monospace",
             fontSize: 11,
-            color: 'var(--text-secondary)',
+            color: '#555555',
             marginTop: 3,
             letterSpacing: '0.05em',
           }}>
             {companyName}
           </div>
         )}
-        <div style={{ height: 1, background: 'var(--border)', marginTop: 8 }} />
+        <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', marginTop: 8 }} />
       </div>
 
       {/* Card + glow orb wrapper */}
       <div style={{ position: 'relative', width: '100%', maxWidth: 440 }}>
-        {/* radial glow behind card — scaled down 15% from 400px */}
+        {/* Radial glow behind card — colour follows the signal */}
         <div
           aria-hidden="true"
           style={{
@@ -85,9 +111,10 @@ export default function HeroSignal({ signal, ticker, loading, updating }) {
             zIndex: 1,
             width: '100%',
             padding: '16px 32px',
-            background: 'rgba(0,255,65,0.04)',
-            border: '1px solid rgba(0,255,65,0.12)',
-            borderTop: '1px solid rgba(0,255,65,0.2)',
+            /* Override .t-card defaults with signal-reactive values */
+            background: vc.glow,
+            border: `1px solid ${vc.border}`,
+            borderTop: `1px solid ${vc.top}`,
             textAlign: 'center',
           }}
         >
@@ -98,7 +125,7 @@ export default function HeroSignal({ signal, ticker, loading, updating }) {
               right: 12,
               fontFamily: 'var(--font-mono)',
               fontSize: 9,
-              color: 'var(--terminal-green-dim)',
+              color: '#555555',
               letterSpacing: '0.15em',
               opacity: 0.6,
             }}>
@@ -107,7 +134,7 @@ export default function HeroSignal({ signal, ticker, loading, updating }) {
           )}
 
           {loading && !signal ? (
-            <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', fontSize: 12, letterSpacing: '0.2em' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', color: '#444444', fontSize: 12, letterSpacing: '0.2em' }}>
               LOADING…
             </div>
           ) : (
@@ -125,7 +152,7 @@ export default function HeroSignal({ signal, ticker, loading, updating }) {
                   marginBottom: 18,
                 }}
               >
-                {verdict}
+                {verdict || '—'}
               </div>
 
               {/* Confidence */}
@@ -140,11 +167,11 @@ export default function HeroSignal({ signal, ticker, loading, updating }) {
                   marginBottom: 12,
                 }}
               >
-                {confidence}%
+                {signal ? `${confidence}%` : '—'}
               </div>
 
               {/* Ticker + article count */}
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)', letterSpacing: '0.08em' }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#555555', letterSpacing: '0.08em' }}>
                 {ticker}&nbsp;&nbsp;·&nbsp;&nbsp;{articleCount} article{articleCount !== 1 ? 's' : ''}
               </div>
             </>

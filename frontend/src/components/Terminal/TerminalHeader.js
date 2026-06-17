@@ -7,7 +7,7 @@ const S = {
     top: 0,
     zIndex: 200,
     background: '#000000',
-    borderBottom: '1px solid rgba(0,255,65,0.1)',
+    borderBottom: '1px solid rgba(255,255,255,0.08)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -23,7 +23,7 @@ const S = {
     userSelect: 'none',
   },
   prompt: {
-    color: '#e0e0e0',
+    color: '#555555',
     marginRight: 6,
   },
   right: {
@@ -39,7 +39,9 @@ const S = {
   },
 };
 
-export default function TerminalHeader({ ticker, onTickerChange, isLive }) {
+export default function TerminalHeader({ ticker, onTickerChange, isLive, signalColor = '#444444' }) {
+  const dotColor = isLive ? signalColor : '#333333';
+
   return (
     <header style={S.header}>
       <span style={S.wordmark}>
@@ -51,8 +53,8 @@ export default function TerminalHeader({ ticker, onTickerChange, isLive }) {
         <span
           style={{
             ...S.liveDot,
-            background: isLive ? '#00ff41' : 'rgba(0,255,65,0.2)',
-            boxShadow: isLive ? '0 0 8px #00ff41' : 'none',
+            background: dotColor,
+            boxShadow: isLive ? `0 0 8px ${signalColor}` : 'none',
             animation: isLive ? 'live-blink 2.4s ease-in-out infinite' : 'none',
           }}
           title={isLive ? 'Signal live' : 'Awaiting signal'}

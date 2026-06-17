@@ -12,6 +12,13 @@ import { useNews } from '../hooks/useNews';
 import { useRecentSignals } from '../hooks/useRecentSignals';
 import { useSignals } from '../hooks/useSignals';
 
+const SIGNAL_THEME = {
+  BUY:  { color: '#00ff41', glow: 'rgba(0,255,65,0.12)',   border: 'rgba(0,255,65,0.15)' },
+  HOLD: { color: '#ffaa00', glow: 'rgba(255,170,0,0.12)',  border: 'rgba(255,170,0,0.15)' },
+  SELL: { color: '#ff3131', glow: 'rgba(255,49,49,0.12)',  border: 'rgba(255,49,49,0.15)' },
+};
+const DEFAULT_SIGNAL_THEME = { color: '#444444', glow: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.08)' };
+
 const SERVICES = [
   { key: 'news',          name: 'news-ingestion-service',    port: '5001' },
   { key: 'preprocessing', name: 'preprocessing-service',     port: '5002' },
@@ -112,6 +119,10 @@ export default function Dashboard() {
   const selectedSignal = signals.selected;
   const updating = signals.loading && !!selectedSignal;
 
+  const signalTheme = (selectedSignal?.verdict && SIGNAL_THEME[selectedSignal.verdict])
+    || DEFAULT_SIGNAL_THEME;
+  const { color: signalColor } = signalTheme;
+
   // Enrich articles with sentiment from signal's supporting_articles
   const enrichedArticles = useMemo(() => {
     const supportMap = new Map();
@@ -138,6 +149,7 @@ export default function Dashboard() {
         ticker={ticker}
         onTickerChange={handleTickerChange}
         isLive={!!selectedSignal && !signals.loading}
+        signalColor={signalColor}
       />
 
       <TickerTape signalsByTicker={signalsByTicker} />

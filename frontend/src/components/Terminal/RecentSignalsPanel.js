@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 
 const VERDICT_COLOR = {
-  BUY:  '#00ff41',
-  SELL: '#ff3131',
-  HOLD: '#ffaa00',
+  BUY:  { text: '#00ff41', glow: 'rgba(0,255,65,0.05)',   border: '#00ff41' },
+  SELL: { text: '#ff3131', glow: 'rgba(255,49,49,0.05)',  border: '#ff3131' },
+  HOLD: { text: '#ffaa00', glow: 'rgba(255,170,0,0.05)',  border: '#ffaa00' },
 };
+const DEFAULT_VC = { text: '#666666', glow: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.3)' };
 
 const LS_FAV_KEY = 'tickerFavorites';
 
@@ -46,7 +47,7 @@ export default function RecentSignalsPanel({
       </div>
 
       {recentTickers.length === 0 && (
-        <div style={{ padding: '16px 14px', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-dim)' }}>
+        <div style={{ padding: '16px 14px', fontFamily: 'var(--font-mono)', fontSize: 11, color: '#444444' }}>
           No tickers yet.
         </div>
       )}
@@ -56,6 +57,10 @@ export default function RecentSignalsPanel({
         const isSelected = t === ticker;
         const ingestStatus = ingestStatusByTicker[t];
         const isFav = favorites.has(t);
+
+        // Per-ticker signal colors for the selected-row highlight
+        const vc = (signal?.verdict && VERDICT_COLOR[signal.verdict]) || DEFAULT_VC;
+        const verdictText = VERDICT_COLOR[signal?.verdict]?.text || '#666666';
 
         return (
           <div
@@ -69,8 +74,8 @@ export default function RecentSignalsPanel({
               gap: 6,
               padding: '8px 10px 8px 0',
               borderBottom: '1px solid var(--border)',
-              borderLeft: isSelected ? '3px solid #00ff41' : '3px solid transparent',
-              background: isSelected ? 'rgba(0,255,65,0.08)' : 'transparent',
+              borderLeft: isSelected ? `3px solid ${vc.border}` : '3px solid transparent',
+              background: isSelected ? vc.glow : 'transparent',
               cursor: 'pointer',
               transition: 'background 0.15s',
               paddingLeft: isSelected ? 10 : 13,
@@ -96,7 +101,7 @@ export default function RecentSignalsPanel({
                 fontFamily: 'var(--font-mono)',
                 fontSize: 10,
                 fontWeight: 600,
-                color: VERDICT_COLOR[signal.verdict] || '#ffaa00',
+                color: verdictText,
                 letterSpacing: '0.08em',
               }}>
                 {signal.verdict}
@@ -105,11 +110,11 @@ export default function RecentSignalsPanel({
               <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                 <span style={{
                   width: 5, height: 5, borderRadius: '50%',
-                  background: '#00ff41',
+                  background: '#444444',
                   flexShrink: 0,
                   animation: 'ingest-pulse 1.2s ease-in-out infinite',
                 }} />
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-secondary)' }}>…</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#555555' }}>…</span>
               </span>
             ) : (
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#333333' }}>—</span>
@@ -119,9 +124,9 @@ export default function RecentSignalsPanel({
             <span style={{
               fontFamily: 'var(--font-mono)',
               fontSize: 10,
-              color: signal ? (VERDICT_COLOR[signal.verdict] || 'var(--text-secondary)') : 'var(--text-dim)',
+              color: signal ? verdictText : '#444444',
               textAlign: 'right',
-              opacity: signal ? 0.8 : 1,
+              opacity: signal ? 0.7 : 1,
             }}>
               {signal ? `${pct(signal.confidence)}%` : ''}
             </span>
@@ -135,11 +140,10 @@ export default function RecentSignalsPanel({
                 border: 'none',
                 cursor: 'pointer',
                 fontSize: 11,
-                color: isFav ? 'rgba(0,255,65,0.8)' : 'rgba(0,255,65,0.3)',
+                color: isFav ? '#666666' : '#333333',
                 padding: 0,
                 lineHeight: 1,
-                opacity: 1,
-                transition: 'opacity 0.15s, color 0.15s',
+                transition: 'color 0.15s',
               }}
               title={isFav ? 'Unfavorite' : 'Favorite'}
             >

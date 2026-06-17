@@ -41,12 +41,12 @@ const styles = {
   wrap: { position: 'relative', width: '100%', maxWidth: 380 },
   input: {
     width: '100%', padding: '10px 16px 10px 40px',
-    border: '0.5px solid rgba(0,255,65,0.15)',
+    border: '0.5px solid rgba(255,255,255,0.1)',
     borderRadius: 'var(--radius-md)',
-    background: 'rgba(0,255,65,0.03)',
+    background: 'rgba(255,255,255,0.04)',
     fontFamily: 'var(--font-mono)',
     fontSize: 14, fontWeight: 500,
-    color: 'var(--text-primary)',
+    color: '#e0e0e0',
     outline: 'none',
     letterSpacing: '0.05em',
     boxSizing: 'border-box',
@@ -54,17 +54,17 @@ const styles = {
   icon: {
     position: 'absolute', left: 14, top: '50%',
     transform: 'translateY(-50%)',
-    color: 'var(--text-hint)', fontSize: 15, pointerEvents: 'none',
+    color: '#555555', fontSize: 15, pointerEvents: 'none',
   },
   dropdown: {
     position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
-    background: 'rgba(0,255,65,0.03)',
+    background: 'rgba(255,255,255,0.03)',
     backdropFilter: 'blur(20px) saturate(180%)',
     WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-    border: '0.5px solid rgba(0,255,65,0.15)',
+    border: '0.5px solid rgba(255,255,255,0.1)',
     borderRadius: 'var(--radius-md)',
     zIndex: 100, overflow: 'hidden',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(0,255,65,0.06)',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04)',
   },
   item: {
     padding: '9px 16px',
@@ -72,20 +72,20 @@ const styles = {
     fontSize: 13, fontWeight: 500,
     letterSpacing: '0.04em',
     cursor: 'pointer',
-    color: 'var(--text-primary)',
+    color: '#e0e0e0',
     display: 'flex', alignItems: 'center', gap: 8,
     userSelect: 'none',
   },
-  ticker: { minWidth: 48, color: 'var(--text-primary)' },
-  sep:    { color: 'var(--text-hint)', fontWeight: 400 },
-  name:   { color: 'var(--text-secondary)', fontWeight: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  ticker: { minWidth: 48, color: '#e0e0e0' },
+  sep:    { color: '#444444', fontWeight: 400 },
+  name:   { color: '#666666', fontWeight: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   searchMore: {
     padding: '9px 16px',
     fontFamily: 'var(--font-mono)',
     fontSize: 13,
     cursor: 'pointer',
-    color: '#00ff41',
-    borderTop: '0.5px solid var(--border)',
+    color: '#e0e0e0',
+    borderTop: '0.5px solid rgba(255,255,255,0.06)',
     userSelect: 'none',
   },
 };
@@ -167,7 +167,7 @@ export default function SearchBar({ value, onChange }) {
       <input
         style={{
           ...styles.input,
-          borderColor: focused ? 'rgba(0,255,65,0.4)' : 'rgba(0,255,65,0.15)',
+          borderColor: focused ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.1)',
         }}
         value={query}
         placeholder="Search ticker or company..."
@@ -186,8 +186,8 @@ export default function SearchBar({ value, onChange }) {
               style={{
                 ...styles.item,
                 background: i === activeIdx
-                  ? 'rgba(0,255,65,0.08)'
-                  : i % 2 === 0 ? 'transparent' : 'rgba(0,255,65,0.03)',
+                  ? 'rgba(255,255,255,0.08)'
+                  : i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
               }}
               onMouseEnter={() => setActiveIdx(i)}
               onMouseLeave={() => setActiveIdx(-1)}
